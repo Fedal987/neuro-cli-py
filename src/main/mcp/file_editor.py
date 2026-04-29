@@ -2,21 +2,36 @@
     Neuro-cli
     author@Fedal987
     Powered by SigmaStudio
-    GitHub: https://github.com/Fedal987/neuro-cli
+    GitHub: https://github.com/Fedal987/neuro-cli-py
 """
 
+import os
 import json
 from json_repair import repair_json
 
-def parse(raw_text):
+def get_current_path():
+    return os.getcwd()
+    # return os.path.dirname(os.path.abspath(__file__))
+
+def llm_msg_reader():
+    pass
+
+def parse():
+
     try:
         return json.loads(raw_text)
     except json.decoder.JSONDecodeError:
         try:
             fixed_str = repair_json(raw_text)
             return json.loads(fixed_str)
-        except Exception:
+        except json.decoder.JSONDecodeError as e:
+            print(e)
             return None
+
+# def editor(fixed_str):
+#     try:
+#         return json.loads(fixed_str)
+#     except json.decoder.JSONDecodeError:
 
 if __name__ == "__main__":
     data = parse(
@@ -32,3 +47,4 @@ if __name__ == "__main__":
     """
     )
     print(data)
+
