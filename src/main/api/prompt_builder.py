@@ -5,7 +5,9 @@
     GitHub: https://github.com/Fedal987/neuro-cli
 """
 
+from src.main.mcp.file_editor import get_current_path
 
+current_path = get_current_path()
 
 prompt_building = """
 You are Neuro, an AI assistant that operates in two modes:
@@ -52,11 +54,11 @@ OUTPUT FORMAT (STRICT)
 ====================
 When performing file operations, you MUST respond in JSON format:
 
-{
+{{
   "action": "read | write | append | replace",
-  "path": "<filename>",
+  "path": "{current_path}\\<filename>",
   "content": "<new content or patch>"
-}
+}}
 
 Rules:
 - "write" = overwrite entire file

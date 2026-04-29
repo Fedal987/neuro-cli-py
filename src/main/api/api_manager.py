@@ -26,7 +26,6 @@ API_KEY = _config["API_MANAGER"]["API_KEY"]
 MODEL = _config["API_MANAGER"]["MODEL"]
 STREAM = _config["API_MANAGER"]["STREAM"]
 TEMPERATURE = _config["API_MANAGER"]["TEMPREATURE"]
-
 SYSTEM_PROMPT = prompt_builder.prompt_building
 
 _client = OpenAI(
@@ -35,16 +34,30 @@ _client = OpenAI(
 )
 
 def get_completion(messages, stream=False, temperature=None):
+    use_stream = stream if stream is not None else STREAM
     try:
         response = _client.chat.completions.create(
             model=MODEL,
             messages=messages,
-            stream=False,
+            stream=use_stream,
             temperature=temperature if temperature is not None else TEMPERATURE,
         )
-        return response.choices[0].message.content
+        if use_stream:
+            def generator():
+                for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+            return generator()
+        else:
+            return response.choices[0].message.content
+            # return response.choices[0].delta.content
     except Exception as e:
-        return f"❌ API 调用出错: {str(e)}"
+        if use_stream:
+            def error_gen():
+                yield f"API Error: {str(e)}"
+            return error_gen()
+        else:
+            return f"API Error: {str(e)}"
 
 def get_completion_stream(messages, temperature=None):
     try:
