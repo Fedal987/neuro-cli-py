@@ -1,0 +1,6 @@
+[API_MANAGER]
+BASE_URL = "https://api.siliconflow.cn/v1" # 可替换为你使用的实际URL
+API_KEY = ""
+MODEL = "deepseek-ai/DeepSeek-V4-Flash" # 默认模型 可更换(dsv4真便宜吧 0.001r/K Tokens)
+TEMPREATURE = 0.7
+STREAM = true
