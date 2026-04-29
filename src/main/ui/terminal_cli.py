@@ -112,11 +112,21 @@ def main():
                 time.sleep(0.1)
                 # reply = msg_handler.get_response(user_input)  # 核心调用
             console.print("\n[bold magenta]Neuro[/bold magenta] > ", end="")
-            full_reply = ""
-            for chunk in msg_handler.get_response_stream(user_input):
-                print(chunk, end='', flush=True)
-                full_reply += chunk
-            console.print()
+            if msg_handler.use_stream:
+                for chunk in msg_handler.get_response_stream(user_input):
+                    print(chunk, end="", flush=True)
+                console.print()
+            else:
+                with console.status("[bold blue]Neuro祈祷中...[/bold blue]"):
+                    reply = msg_handler.get_response(user_input)
+                console.print(reply)
+                console.print()
+
+            # full_reply = ""
+            # for chunk in msg_handler.get_response_stream(user_input):
+            #     print(chunk, end='', flush=True)
+            #     full_reply += chunk
+            # console.print()
             # if "```" in reply:
             #     console.print(Markdown(reply))
             # else:
