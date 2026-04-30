@@ -2,7 +2,7 @@
     Neuro-cli
     author@Fedal987
     Powered by SigmaStudio
-    GitHub: https://github.com/Fedal987/neuro-cli
+    GitHub: https://github.com/Fedal987/neuro-cli-py
 """
 
 import tomli
@@ -50,7 +50,6 @@ def get_completion(messages, stream=False, temperature=None):
             return generator()
         else:
             return response.choices[0].message.content
-            # return response.choices[0].delta.content
     except Exception as e:
         if use_stream:
             def error_gen():

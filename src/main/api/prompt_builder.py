@@ -2,10 +2,10 @@
     Neuro-cli
     author@Fedal987
     Powered by SigmaStudio
-    GitHub: https://github.com/Fedal987/neuro-cli
+    GitHub: https://github.com/Fedal987/neuro-cli-py
 """
 
-from src.main.mcp.file_editor import get_current_path
+from src.main.tool.file_editor import get_current_path
 
 current_path = get_current_path()
 
