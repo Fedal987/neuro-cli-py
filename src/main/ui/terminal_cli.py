@@ -13,21 +13,41 @@ from pygments.lexers import PythonLexer
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
+from json_repair import repair_json
 import time
 
 from src.main.api.api_manager import BASE_URL, MODEL
 from src.main.msg.message_handler import MessageHandler
-from src.main.tool.file_editor import editor, get_current_path
+from src.main.tool.file_editor import editor, get_current_path, parse
 
 HISTORY_FILE = ".neuro_cli_history"
 session = PromptSession(
     history=FileHistory(HISTORY_FILE),
     auto_suggest=AutoSuggestFromHistory(),
     lexer=PygmentsLexer(PythonLexer),
-    # key_bindings=kb,
     multiline=True,
 )
 console = Console()
+
+def contains_json(text: str) -> bool:
+    return parse(text) is not None
+    # try:
+    #     start_idx = min(
+    #         (text.find('{') if text.find('{') != -1 else len(text)),
+    #         (text.find('[') if text.find('[') != -1 else len(text))
+    #     )
+    #     if start_idx == len(text):
+    #         return False
+    #     end_curly = text.rfind('}')
+    #     end_square = text.rfind(']')
+    #     end_idx = max(end_curly, end_square)
+    #     if end_idx <= start_idx:
+    #         return False
+    #     candidate = text[start_idx:end_idx+1]
+    #     repair_json(candidate)
+    #     return True
+    # except Exception:
+    #     return False
 
 def show_help():
     help_text = f"""
@@ -87,7 +107,7 @@ def main():
                     show_help()
                 elif cmd == "/clear":
                     clear_screen()
-                    msg_handler.reset()  # 重置对话历史
+                    msg_handler.reset()
                 elif cmd == "/reset":
                     msg_handler.reset()
                 elif cmd == "/echo":
@@ -105,28 +125,30 @@ def main():
                     print(chunk, end="", flush=True)
                     full_stream_reply += chunk
                 console.print()
-                # TODO: 在此注释下的代码添加条件 判断llm输出的文本是否有json 避免token浪费
-                feedback = editor(full_stream_reply)
-                if feedback and not feedback.startswith("无法从您的回复中解析"):
-                    msg_handler.add_user_message(feedback)
-                    console.print("[bold magenta]Neuro[/bold magenta] > ", end="")
-                    final_reply = msg_handler.get_response()
-                    console.print(final_reply)
-                    console.print()
+                # TODO: 在此注释下的代码添加条件 判断llm输出的文本是否有json 避免token浪费 Done
+                if contains_json(full_stream_reply):
+                    feedback = editor(full_stream_reply)
+                    if not feedback.startswith("无法从您的回复中解析"):
+                        msg_handler.add_user_message(feedback)
+                        console.print("[bold magenta]Neuro[/bold magenta] > ", end="")
+                        final_reply = msg_handler.get_response()
+                        console.print(final_reply)
+                        console.print()
             else:
                 with console.status("[bold blue]Neuro祈祷中...[/bold blue]"):
                     reply = msg_handler.get_response(user_input)
                 console.print(reply)
                 console.print()
-                # TODO: 在此注释下的代码添加条件 判断llm输出的文本是否有json 避免token浪费
-                feedback = editor(reply)
-                if feedback and not feedback.startswith("无法从您的回复中解析"):
-                    msg_handler.add_user_message(feedback)
-                    console.print("[bold magenta]Neuro[/bold magenta] > ", end="")
-                    with console.status("[bold blue]Neuro处理中...[/bold blue]"):
-                        final_reply = msg_handler.get_response()
-                    console.print(final_reply)
-                    console.print()
+                # TODO: 在此注释下的代码添加条件 判断llm输出的文本是否有json 避免token浪费 Done
+                if contains_json(reply):
+                    feedback = editor(reply)
+                    if not feedback.startswith("无法从您的回复中解析"):
+                        msg_handler.add_user_message(feedback)
+                        console.print("[bold magenta]Neuro[/bold magenta] > ", end="")
+                        with console.status("[bold blue]Neuro处理中...[/bold blue]"):
+                            final_reply = msg_handler.get_response()
+                        console.print(final_reply)
+                        console.print()
 
         except KeyboardInterrupt:
             console.print("\n[dim]按 Ctrl+C 再次退出，或输入 /exit[/dim]")
