@@ -28,8 +28,19 @@ def extract_json_from_text(raw_text: str) -> str:
         if end != -1:
             return raw_text[start:end].strip()
     start_brace = raw_text.find('{')
+    if start_brace == -1:
+        return raw_text.strip()
+    depth = 0
+    for i in range(start_brace, len(raw_text)):
+        if raw_text[i] == "{":
+            depth += 1
+        elif raw_text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return raw_text[start_brace:i+1].strip()
     end_brace = raw_text.rfind('}')
-    if start_brace != -1 and end_brace != -1:
+    if end_brace != -1:
+    # start_brace != -1 and
         return raw_text[start_brace:end_brace + 1].strip()
     return raw_text.strip()
 
