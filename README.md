@@ -10,7 +10,7 @@
         <img src="https://img.shields.io/github/stars/Fedal987/neuro-cli-py?style=flat&label=Stars" alt="Stars">
     </p>
     <h4>(本项目仅用于验证可行性，并不会作为正式项目更新)</h4>
-    <img src="depends-data/readme/wide_evil.jpg" alt="evil">
+    <img src="depends-data/readme/wide_evil.jpg" align="right" width="40%" alt="Evil Character" style="margin-left: 20px; margin-bottom: 20px>
     <hr>
 </div>
 
