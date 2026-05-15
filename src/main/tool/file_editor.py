@@ -12,6 +12,25 @@ from pathlib import Path
 from json_repair import repair_json
 from typing import Dict, Any, Optional, Tuple
 
+debug_mode = False # 测试模式 用于输出详细日志 默认不开
+
+def contains_json(text: str) -> bool:
+    try:
+        start = text.find('{')
+        if start == -1:
+            start = text.find('[')
+        if start == -1:
+            return False
+        end = text.rfind('}')
+        if end == -1:
+            end = text.rfind(']')
+        if end <= start:
+            return False
+        candidate = text[start:end+1]
+        json.loads(candidate)
+        return True
+    except:
+        return False
 
 def get_current_path() -> str:
     return os.getcwd()
@@ -53,7 +72,10 @@ def parse(raw_text: str) -> Optional[Dict[str, Any]]:
             fixed_str = repair_json(json_str)
             return json.loads(fixed_str)
         except Exception as e:
-            print(f"[JSON 解析错误] {e}")
+            if debug_mode:
+                print(f"[JSON 解析错误] {e}")
+            else:
+                pass
             return None
 
 def read_file(file_path: Path) -> Tuple[str, str]:
@@ -189,7 +211,6 @@ def editor(raw_text: str, workspace_root: str = None) -> str:
             success, msg = append_file(full_path, content)
         elif action == "replace":
             success, msg = replace_in_file(full_path, old_content, content)
-
         if success:
             return f"{msg}\n操作已完成。请告知用户结果。"
         else:
@@ -206,10 +227,12 @@ if __name__ == "__main__":
     故事發生在一塊肉，掉下去肉掉下。然後鼠標開始變得奇怪故事發生在海上的輪船 要推理哪個人顯示爸爸姐姐，我哥哥剛開始一塊肉，掉下去肉掉哪個先海上的輪船\n
     要推理哪個人顯示哪個先死 媽媽爸爸姐姐，我哥哥剛開始死 媽媽下。然後鼠標開始變得奇怪??故事發生在一塊肉，\n
     {
-        "action": "read",
-        "path": "config.toml"
+        "action": "write",
+        "path": "test.toml",
+        "content": "伊地知虹夏は、浜路晶による漫画『ぼっち・ざ・ろっく！』およびその派生作品に登場するキャラクターで、アニメ版の声優は鈴代紗弓、実写版では大竹美希が演じている。バンド「結束バンド」のドラマー兼リーダーとして、下北沢高校在学中にバンドを結成し、後藤ひとり、山田リョウ、喜多郁代とともに結束バンドを組む。キャラクターの原型はASIAN KUNG-FU GENERATIONのドラマー、伊地知潔。\n幼少期に母親を亡くし、姉の星歌と二人で支え合って育つ。星歌のバンドライブに影響を受け、ドラムを始める。小学校時代に山田リョウと知り合い、高校時代にバンドを結成したことで生活の困難を乗り越える。ライブハウス「STARRY」で働きながら演奏技術を磨く。大学は芳文大学に進学し、バンド活動を続ける中で録音の壁に直面するが、姉の助言を受け、バンドの核として導く役割を自覚する。\n虹夏は、金髪のサイドポニーテールと赤いヘアバンドがトレードマーク。明るい性格で責任感が強く、メンバー間の調整に優れる。バンド運営の実質的な組織者として、学業のプレッシャーに対処しつつチームの諸問題を処理し、補習授業のサポートや衝突の調和などを通じてバンドの発展を支えている。"
     }
     掉下去肉掉下。然後鼠標開始變得奇怪故事發生在海上的輪船
     """
     result = editor(test_input)
     print("编辑器返回:", result)
+
