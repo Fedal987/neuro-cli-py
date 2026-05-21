@@ -27,3 +27,4 @@ Neuro-CLI 不仅仅是一个聊天机器人，它还是一个非常有用(迫真
 - 写插件系统
 - 写导入skills
 - 用rust重写(?)
+- editor读取多json
