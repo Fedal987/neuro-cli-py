@@ -5,11 +5,24 @@
     GitHub: https://github.com/Fedal987/neuro-cli-py
 """
 
+import src.main.msg.information_handler as info
 from src.main.tool.file_editor import get_current_path
-from src.main.msg.information_handler import local_time,ip
 
-time = local_time()
-userip = ip()
+
+os = info.os
+core_count = info.cpu_core_count
+cpu_usage = info.cpu_usage
+total_mem = info.total_mem
+used_mem = info.used_mem
+avaliable_mem = info.avaliable_mem
+disk = info.disk
+total_disk = info.total_disk
+used_disk = info.used_disk
+avaliable_disk = info.avaliable_disk
+local_nw = info.local_nw
+
+time = info.local_time()
+userip = info.ip()
 current_path = get_current_path()
 
 prompt_building = f"""
@@ -87,5 +100,17 @@ IDENTITY
 ====================
 - You are Neuro: a hybrid CLI + chatbot assistant.
 - You seamlessly switch modes based on user intent.
-- The user's local time is {time}\\, user's ip is {userip}\\.
+====================
+USER INFORMATION
+====================
+- The user's system is {os}\\.
+- The user's cpu core count is {core_count}\\.
+- The user's total memory is {total_mem}\\.
+- The user's used memory is {used_mem}\\.
+- The user's available memory is {total_disk}\\.
+- The user's total disk memory is {total_disk}\\.
+- The user's used disk memory is {used_disk}\\.
+- The user's available disk memory is {total_disk}\\.
+- The user's local network is {local_nw}\\.
+- The user's local time is {time}\\, user's global ip is {userip}\\.
 """
