@@ -1,7 +1,7 @@
 """
     Neuro-cli
     author@Fedal987
-    Powered by SigmaStudio
+    Powered by HeronStudio
     GitHub: https://github.com/Fedal987/neuro-cli-py
 """
 
@@ -139,9 +139,7 @@ def show_diff_and_confirm(original_content: str, new_content: str, file_path: st
 
 def extract_all_json(text: str) -> List[str]:
     """
-    从原始文本中提取所有完整的 JSON 对象或数组。
-    支持嵌套 JSON 和字符串内的括号（简单转义处理）。
-    返回 JSON 字符串列表。
+    已看懂，另外不要写日文commit了(恼)   ---Fedal987
     """
     results = []
     i = 0
@@ -154,7 +152,6 @@ def extract_all_json(text: str) -> List[str]:
                 break
         if start == -1:
             break
-
         open_char = text[start]
         close_char = '}' if open_char == '{' else ']'
         depth = 0
@@ -189,22 +186,12 @@ def extract_all_json(text: str) -> List[str]:
     return results
 
 def editor(raw_text: str, workspace_root: str = None) -> str:
-    """
-    解析 LLM 输出中的多个 JSON 指令，并依次执行文件操作。
-    Args:
-        raw_text: LLM 输出的原始文本
-        workspace_root: 工作区根目录，默认当前目录
-    Returns:
-        给 LLM 的反馈信息，多个操作的结果用分隔线隔开
-    """
     if workspace_root is None:
         workspace_root = get_current_path()
     workspace_path = Path(workspace_root).resolve()
-
     json_strings = extract_all_json(raw_text)
     if not json_strings:
         return "无法从回复中解析出任何有效的 JSON 指令，请确保按照规定的 JSON 格式输出文件操作。"
-
     all_feedbacks = []
     for idx, json_str in enumerate(json_strings, 1):
         try:
@@ -213,16 +200,13 @@ def editor(raw_text: str, workspace_root: str = None) -> str:
         except Exception as e:
             all_feedbacks.append(f"[操作 {idx}] JSON 解析失败: {e}")
             continue
-
         action = action_data.get("action")
         path = action_data.get("path")
         content = action_data.get("content", "")
-        old_content = action_data.get("old_content", "")  # 用于 replace
-
+        old_content = action_data.get("old_content", "")
         if not action or not path:
             all_feedbacks.append(f"[操作 {idx}] JSON 缺少必要字段 (action/path)，已跳过。")
             continue
-
         try:
             req_path = Path(path)
             if not req_path.is_absolute():
@@ -236,12 +220,10 @@ def editor(raw_text: str, workspace_root: str = None) -> str:
         except Exception as e:
             all_feedbacks.append(f"[操作 {idx}] 路径解析出错: {e}")
             continue
-
         if action == "read":
             if not ask_permission("读取", str(full_path)):
                 all_feedbacks.append(f"[操作 {idx}] 用户拒绝了文件读取操作。")
                 continue
-
             file_content, err = read_file(full_path)
             if err:
                 all_feedbacks.append(f"[操作 {idx}] 读取文件失败: {err}")
@@ -251,11 +233,9 @@ def editor(raw_text: str, workspace_root: str = None) -> str:
             if not ask_permission(action, str(full_path)):
                 all_feedbacks.append(f"[操作 {idx}] 用户拒绝了 {action} 操作。")
                 continue
-
             original = ""
             if full_path.exists():
                 original, _ = read_file(full_path)
-
             new_content = ""
             if action == "write":
                 new_content = content
@@ -266,11 +246,9 @@ def editor(raw_text: str, workspace_root: str = None) -> str:
                     new_content = original.replace(old_content, content)
                 else:
                     new_content = content
-
             if not show_diff_and_confirm(original, new_content, str(full_path)):
                 all_feedbacks.append(f"[操作 {idx}] 用户取消了文件修改。")
                 continue
-
             success, msg = False, ""
             if action == "write":
                 success, msg = write_file(full_path, content)
@@ -285,7 +263,6 @@ def editor(raw_text: str, workspace_root: str = None) -> str:
                 all_feedbacks.append(f"[操作 {idx}] 操作失败: {msg}")
         else:
             all_feedbacks.append(f"[操作 {idx}] 不支持的操作类型: {action}，支持 read/write/append/replace。")
-
     if not all_feedbacks:
         return "未执行任何有效操作。"
     return "\n---\n".join(all_feedbacks)

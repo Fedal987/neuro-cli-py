@@ -1,7 +1,7 @@
 """
     Neuro-cli
     author@Fedal987
-    Powered by SigmaStudio
+    Powered by HeronStudio
     GitHub: https://github.com/Fedal987/neuro-cli-py
 """
 
@@ -13,7 +13,6 @@ from pygments.lexers import PythonLexer
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from json_repair import repair_json
 import time
 
 from src.main.api.api_manager import BASE_URL, MODEL
@@ -31,23 +30,6 @@ console = Console()
 
 def contains_json(text: str) -> bool:
     return parse(text) is not None
-    # try:
-    #     start_idx = min(
-    #         (text.find('{') if text.find('{') != -1 else len(text)),
-    #         (text.find('[') if text.find('[') != -1 else len(text))
-    #     )
-    #     if start_idx == len(text):
-    #         return False
-    #     end_curly = text.rfind('}')
-    #     end_square = text.rfind(']')
-    #     end_idx = max(end_curly, end_square)
-    #     if end_idx <= start_idx:
-    #         return False
-    #     candidate = text[start_idx:end_idx+1]
-    #     repair_json(candidate)
-    #     return True
-    # except Exception:
-    #     return False
 
 def show_help():
     help_text = f"""
@@ -125,7 +107,6 @@ def main():
                     print(chunk, end="", flush=True)
                     full_stream_reply += chunk
                 console.print()
-                # TODO: 在此注释下的代码添加条件 判断llm输出的文本是否有json 避免token浪费 Done
                 if contains_json(full_stream_reply):
                     feedback = editor(full_stream_reply)
                     if not feedback.startswith("无法从您的回复中解析"):
@@ -139,7 +120,6 @@ def main():
                     reply = msg_handler.get_response(user_input)
                 console.print(reply)
                 console.print()
-                # TODO: 在此注释下的代码添加条件 判断llm输出的文本是否有json 避免token浪费 Done
                 if contains_json(reply):
                     feedback = editor(reply)
                     if not feedback.startswith("无法从您的回复中解析"):
