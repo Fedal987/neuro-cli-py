@@ -1,5 +1,5 @@
 <div align="center">
-    <h1 align="center">Neuro-CLI</h1>
+    <h1 align="center">Neuro Code</h1>
     <h3>An Open-source AI Agent Application With High Performance based on Python</h3>
     <p>
         <img src="https://img.shields.io/badge/Python-3.10+-blue" alt="Python Version">
