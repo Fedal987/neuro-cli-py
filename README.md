@@ -1,5 +1,5 @@
 <div align="center">
-    <h1 align="center">Neuro Code</h1>
+    <h1 align="center">NeuroCode</h1>
     <h3>An Open-source AI Agent Application With High Performance based on Python</h3>
     <p>
         <img src="https://img.shields.io/badge/Python-3.10+-blue" alt="Python Version">
@@ -16,9 +16,9 @@
 
 ## 介绍
 
-Neuro-CLI 是一个基于大语言模型的可以与系统交互的Agent应用。
+NeuroCode 是一个基于大语言模型的可以与系统交互的Agent应用。
 
-Neuro-CLI 不仅仅是一个聊天机器人，它还是一个非常有用(迫真)的工具，其最终目的是实现类似于OpenClaw的系统交互应用
+NeuroCode 不仅仅是一个聊天机器人，它还是一个非常有用(迫真)的工具，其最终目的是实现类似于OpenClaw的系统交互应用
 
 ## TODO list:
 
