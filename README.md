@@ -9,7 +9,6 @@
         <img src="https://img.shields.io/github/forks/Fedal987/neuro-cli-py.svg?style=flat&label=Forks" alt="Forks">
         <img src="https://img.shields.io/github/stars/Fedal987/neuro-cli-py?style=flat&label=Stars" alt="Stars">
     </p>
-    <h4>(本项目仅用于验证可行性，并不会作为正式项目更新)</h4>
     <img width="1080" height="211" alt="wide_evil" src="https://github.com/user-attachments/assets/64c40093-de30-4e22-94bb-041de0b6301d" />
     <hr>
 </div>
@@ -18,7 +17,7 @@
 
 NeuroCode 是一个基于大语言模型的可以与系统交互的Agent应用。
 
-NeuroCode 不仅仅是一个聊天机器人，它还是一个非常有用(迫真)的工具，其最终目的是实现类似于OpenClaw的系统交互应用
+NeuroCode 不仅仅是一个聊天机器人，它还是一个非常有用的工具，其最终目的是实现类似于OpenClaw的系统交互应用
 
 ## TODO list:
 
@@ -28,3 +27,36 @@ NeuroCode 不仅仅是一个聊天机器人，它还是一个非常有用(迫真
 - 写导入skills
 - 用rust重写(?)
 - 修改file_editor.py解析方式 由硬解析json改为创建沙箱环境
+
+# 部署步骤  
+
+## 环境需求  
+
+- Git
+- Python > 3.10
+
+### Windows
+
+```bash
+git clone https://github.com/Fedal987/neurocode-py.git # 克隆仓库
+pip install uv # 安装环境包管理器
+uv venv # 创建虚拟环境
+.venv\Scripts\activate # 激活虚拟环境
+uv pip install requirements.txt # 安装依赖
+```
+
+### Linux(Arch)
+
+```bash
+git clone https://github.com/Fedal987/neurocode-py.git # 克隆仓库
+python3 pip install uv # 安装环境包管理器
+uv venv # 创建虚拟环境
+.venv\Scripts\activate # 激活虚拟环境
+uv pip install requirements.txt # 安装依赖
+```
+
+## 启动
+
+```bash
+uv run neuro.py
+```
