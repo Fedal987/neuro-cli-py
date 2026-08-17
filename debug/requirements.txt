@@ -1,5 +1,0 @@
-# debug 项目依赖（ResNet50 训练 + 数据清洗）
-torch>=2.0
-torchvision>=0.15
-pillow>=10.0
-numpy>=1.24
