@@ -35,7 +35,7 @@ local_nw = _safe_call(psutil.net_if_addrs, {})
 def local_time():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
-def ip():
+def ip(include_global: bool = False):
     local_address = "未知"
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as local_socket:
@@ -44,13 +44,15 @@ def ip():
     except OSError:
         pass
 
-    try:
-        global_address = requests.get("https://myip.ipip.net", timeout=5).text
-    except requests.RequestException:
-        global_address = "未知"
+    global_address = "未查询"
+    if include_global:
+        try:
+            global_address = requests.get("https://myip.ipip.net", timeout=5).text
+        except requests.RequestException:
+            global_address = "未知"
     return global_address, local_address
 
 if __name__ == "__main__":
     print(local_time())
-    print(ip())
+    print(ip(include_global=True))
 

@@ -367,6 +367,8 @@ class Agent:
                 return
 
             for tool_call in tool_calls:
+                description = self._describe_tool_call(tool_call)
+                yield StreamEvent("tool", description)
                 result = self._execute_tool_call(tool_call)
                 self.messages.append(
                     {
@@ -375,6 +377,9 @@ class Agent:
                         "content": result,
                     }
                 )
+                failed = "执行失败" in result or "已阻止" in result
+                status = "失败" if failed else "完成"
+                yield StreamEvent("tool_result", f"{status}: {description}")
 
         limit_message = (
             f"已达到最大执行步数 {self.max_steps}。请总结已完成的工作、验证结果和仍未解决的问题，"
@@ -429,7 +434,7 @@ class Agent:
                 timeout=120,
             )
             response.raise_for_status()
-            for raw_line in response.iter_lines(decode_unicode=True):
+            for raw_line in response.iter_lines(chunk_size=1, decode_unicode=True):
                 if not raw_line:
                     continue
                 line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
@@ -526,6 +531,31 @@ class Agent:
         except (TypeError, ValueError, ToolError, OSError) as exc:
             self._last_failed_call = signature
             return f"工具 {name} 执行失败: {exc}。请分析原因并调整下一步，不要原样重复失败操作。"
+
+    @staticmethod
+    def _describe_tool_call(tool_call: dict[str, Any]) -> str:
+        function = tool_call.get("function") or {}
+        name = function.get("name", "未知工具")
+        try:
+            arguments = json.loads(function.get("arguments") or "{}")
+        except json.JSONDecodeError:
+            arguments = {}
+        labels = {
+            "list_directory": "查看目录",
+            "read_file": "读取文件",
+            "search_files": "搜索项目",
+            "write_file": "写入文件",
+            "replace_in_file": "修改文件",
+            "run_command": "执行命令",
+        }
+        detail = (
+            arguments.get("path")
+            or arguments.get("query")
+            or arguments.get("command")
+            or ""
+        )
+        description = labels.get(name, name)
+        return f"{description}: {detail}" if detail else description
 
     def _record_error(self, content: str) -> str:
         self.messages.append({"role": "assistant", "content": content})
