@@ -26,7 +26,7 @@ NeuroCode 不仅仅是一个聊天机器人，它还是一个非常有用的工�
 - 写插件系统
 - 写导入skills
 - 用rust重写(?)
-- 修改file_editor.py解析方式 由硬解析json改为创建沙箱环境
+- 修改file_editor.py解析方式
 
 # 部署步骤  
 

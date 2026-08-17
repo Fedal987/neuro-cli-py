@@ -103,8 +103,6 @@ class StreamEvent:
 
 
 class Agent:
-    """Tool-calling agent for OpenAI-compatible chat completion APIs."""
-
     def __init__(
         self,
         api_key: str,
@@ -306,13 +304,11 @@ class Agent:
         return content
 
     def run_stream(self, user_input: str | None = None):
-        """Yield answer text while keeping compatibility with string consumers."""
         for event in self.run_stream_events(user_input):
             if event.kind in {"content", "error"}:
                 yield event.content
 
     def run_stream_events(self, user_input: str | None = None):
-        """Yield typed reasoning, answer, and error events from the SSE stream."""
         if user_input:
             self.add_user_message(user_input)
         if not any(message["role"] == "user" for message in self.messages):
