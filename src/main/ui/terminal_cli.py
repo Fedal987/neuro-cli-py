@@ -99,15 +99,54 @@ def main():
                 continue
             with console.status("[bold blue]Neuro祈祷中...[/bold blue]"):
                 time.sleep(0.1)
-            console.print("\n[bold magenta]Neuro[/bold magenta] > ", end="")
-
             if msg_handler.use_stream:
                 full_stream_reply = ""
-                for chunk in msg_handler.get_response_stream(user_input):
-                    print(chunk, end="", flush=True)
-                    full_stream_reply += chunk
+                if msg_handler.reasoning_enabled:
+                    displayed_kind = None
+                    for event in msg_handler.get_response_events(user_input):
+                        if event.kind == "reasoning":
+                            if displayed_kind != "reasoning":
+                                if displayed_kind is not None:
+                                    console.print()
+                                leading_newline = "\n" if displayed_kind is None else ""
+                                console.print(
+                                    f"{leading_newline}[dim italic cyan]Neuro 思考[/dim italic cyan] > ",
+                                    end="",
+                                )
+                                displayed_kind = "reasoning"
+                            console.print(
+                                event.content,
+                                end="",
+                                style="dim italic cyan",
+                                markup=False,
+                            )
+                        else:
+                            if displayed_kind != "content":
+                                if displayed_kind is not None:
+                                    console.print()
+                                leading_newline = "\n" if displayed_kind is None else ""
+                                console.print(
+                                    f"{leading_newline}[bold magenta]Neuro[/bold magenta] > ",
+                                    end="",
+                                )
+                                displayed_kind = "content"
+                            style = "bold red" if event.kind == "error" else None
+                            console.print(
+                                event.content,
+                                end="",
+                                style=style,
+                                markup=False,
+                            )
+                            full_stream_reply += event.content
+                    if displayed_kind is None:
+                        console.print("\n[bold magenta]Neuro[/bold magenta] > ", end="")
+                else:
+                    console.print("\n[bold magenta]Neuro[/bold magenta] > ", end="")
+                    for chunk in msg_handler.get_response_stream(user_input):
+                        print(chunk, end="", flush=True)
+                        full_stream_reply += chunk
                 console.print()
-                if contains_json(full_stream_reply):
+                if not msg_handler.reasoning_enabled and contains_json(full_stream_reply):
                     feedback = editor(full_stream_reply)
                     if not feedback.startswith("无法从您的回复中解析"):
                         msg_handler.add_user_message(feedback)
@@ -118,9 +157,10 @@ def main():
             else:
                 with console.status("[bold blue]Neuro祈祷中...[/bold blue]"):
                     reply = msg_handler.get_response(user_input)
+                console.print("\n[bold magenta]Neuro[/bold magenta] > ", end="")
                 console.print(reply)
                 console.print()
-                if contains_json(reply):
+                if not msg_handler.reasoning_enabled and contains_json(reply):
                     feedback = editor(reply)
                     if not feedback.startswith("无法从您的回复中解析"):
                         msg_handler.add_user_message(feedback)

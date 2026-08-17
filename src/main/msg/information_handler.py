@@ -12,27 +12,43 @@ import platform
 import psutil
 
 
+def _safe_call(callback, default):
+    try:
+        return callback()
+    except (OSError, PermissionError, requests.RequestException):
+        return default
+
+
 os = platform.system()
-cpu_core_count = psutil.cpu_count(logical=False)
-cpu_usage = psutil.cpu_percent(interval=1)
-memory = psutil.virtual_memory()
-total_mem = memory.total
-used_mem = memory.used
-avaliable_mem = memory.available
-disk = psutil.disk_usage('/')
-total_disk = disk.total
-used_disk = disk.used
-avaliable_disk = disk.free
-local_nw = psutil.net_if_addrs()
+cpu_core_count = _safe_call(lambda: psutil.cpu_count(logical=False), None)
+cpu_usage = _safe_call(lambda: psutil.cpu_percent(interval=None), None)
+memory = _safe_call(psutil.virtual_memory, None)
+total_mem = memory.total if memory else None
+used_mem = memory.used if memory else None
+avaliable_mem = memory.available if memory else None
+disk = _safe_call(lambda: psutil.disk_usage('/'), None)
+total_disk = disk.total if disk else None
+used_disk = disk.used if disk else None
+avaliable_disk = disk.free if disk else None
+local_nw = _safe_call(psutil.net_if_addrs, {})
 
 def local_time():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
 def ip():
-    local_ip = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    local_ip.connect(("8.8.8.8", 80))
-    global_ip = requests.get("https://myip.ipip.net", timeout=5).text
-    return global_ip, local_ip.getsockname()[0]
+    local_address = "未知"
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as local_socket:
+            local_socket.connect(("8.8.8.8", 80))
+            local_address = local_socket.getsockname()[0]
+    except OSError:
+        pass
+
+    try:
+        global_address = requests.get("https://myip.ipip.net", timeout=5).text
+    except requests.RequestException:
+        global_address = "未知"
+    return global_address, local_address
 
 if __name__ == "__main__":
     print(local_time())

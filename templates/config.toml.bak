@@ -4,3 +4,11 @@ API_KEY = ""
 MODEL = "deepseek-ai/DeepSeek-V4-Flash" # 默认模型 可更换(dsv4真便宜吧 0.001r/K Tokens)
 TEMPREATURE = 0.7
 STREAM = true
+
+[REASONING]
+ENABLED = true # 启用可读取项目、修改文件并运行验证命令的 Agent 模式
+THINKING = true # 为支持该参数的 DeepSeek/SiliconFlow 模型启用思考模式
+MAX_STEPS = 12 # 单次任务允许的最大模型执行轮数
+EFFORT = "" # API 支持时可填写 low/medium/high；留空兼容更多服务商
+AUTO_APPROVE = false # false 时，写文件和运行命令前要求用户确认
+COMMAND_TIMEOUT = 60 # 命令执行超时时间（秒）

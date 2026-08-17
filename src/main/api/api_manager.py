@@ -5,7 +5,10 @@
     GitHub: https://github.com/Fedal987/neuro-cli-py
 """
 
-import tomli
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 compatibility
+    import tomli as tomllib
 from openai import OpenAI
 from pathlib import Path
 
@@ -18,7 +21,7 @@ def _load_config():
     if not config_path.exists():
         raise FileNotFoundError("未找到 config.toml 配置文件")
     with open(config_path, "r", encoding="utf-8") as f:
-        return tomli.loads(f.read())
+        return tomllib.loads(f.read())
 
 _config = _load_config()
 BASE_URL = _config["API_MANAGER"]["BASE_URL"]
@@ -27,6 +30,14 @@ MODEL = _config["API_MANAGER"]["MODEL"]
 STREAM = _config["API_MANAGER"]["STREAM"]
 TEMPERATURE = _config["API_MANAGER"]["TEMPREATURE"]
 SYSTEM_PROMPT = prompt_builder.prompt_building
+
+_reasoning_config = _config.get("REASONING", {})
+REASONING_ENABLED = _reasoning_config.get("ENABLED", True)
+REASONING_THINKING = _reasoning_config.get("THINKING", True)
+REASONING_MAX_STEPS = _reasoning_config.get("MAX_STEPS", 12)
+REASONING_EFFORT = _reasoning_config.get("EFFORT", "")
+REASONING_AUTO_APPROVE = _reasoning_config.get("AUTO_APPROVE", False)
+REASONING_COMMAND_TIMEOUT = _reasoning_config.get("COMMAND_TIMEOUT", 60)
 
 _client = OpenAI(
     base_url=BASE_URL,
