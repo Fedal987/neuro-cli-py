@@ -6,8 +6,10 @@
 """
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
+from prompt_toolkit.input.ansi_escape_sequences import ANSI_SEQUENCES
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.keys import Keys
 from prompt_toolkit.lexers import PygmentsLexer
 from pygments.lexers import PythonLexer
 from rich.console import Console
@@ -15,19 +17,102 @@ from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from itertools import chain
+import os
+import sys
 import time
+from typing import TextIO
 
-from src.main.api.api_manager import BASE_URL, MODEL
-from src.main.msg.message_handler import MessageHandler
+from src.main.api.api_manager import (
+    BASE_URL,
+    MODEL,
+    REASONING_EFFORT,
+    REASONING_ENABLED,
+)
+from src.main.msg.command_utils import CommandManager
+from src.main.msg.session_manager import SessionManager
 from src.main.tool.file_editor import editor, get_current_path, parse
 
-HISTORY_FILE = ".neuro_cli_history"
-session = PromptSession(
-    history=FileHistory(HISTORY_FILE),
-    auto_suggest=AutoSuggestFromHistory(),
-    lexer=PygmentsLexer(PythonLexer),
-    multiline=True,
-)
+# Keep the Shift modifier for terminals that use xterm's modifyOtherKeys or
+# Kitty's CSI-u encoding. prompt_toolkit otherwise treats these as plain Enter.
+for shift_enter_sequence in ("\x1b[27;2;13~", "\x1b[13;2u"):
+    ANSI_SEQUENCES[shift_enter_sequence] = (Keys.Escape, Keys.ControlM)
+
+# Kitty's disambiguated keyboard mode also changes Ctrl+A...Z from C0 bytes to
+# CSI-u sequences. Preserve prompt_toolkit's existing shortcuts in that mode.
+for letter_index, letter in enumerate("abcdefghijklmnopqrstuvwxyz", start=1):
+    control_key = getattr(Keys, f"Control{letter.upper()}")
+    ANSI_SEQUENCES[f"\x1b[{ord(letter)};5u"] = control_key
+    ANSI_SEQUENCES[f"\x1b[{ord(letter)};6u"] = control_key
+ANSI_SEQUENCES["\x1b[27u"] = Keys.Escape
+ANSI_SEQUENCES["\x1b[32;5u"] = Keys.ControlAt
+ANSI_SEQUENCES["\x1b[91;5u"] = Keys.Escape
+ANSI_SEQUENCES["\x1b[92;5u"] = Keys.ControlBackslash
+ANSI_SEQUENCES["\x1b[93;5u"] = Keys.ControlSquareClose
+
+input_key_bindings = KeyBindings()
+
+
+@input_key_bindings.add("enter")
+def submit_input(event) -> None:
+    """Submit the current input when Enter is pressed."""
+
+    event.current_buffer.validate_and_handle()
+
+
+@input_key_bindings.add("escape", "enter")
+@input_key_bindings.add("c-j")
+def insert_line_break(event) -> None:
+    """Insert a line break for Shift+Enter-compatible terminal sequences."""
+
+    event.current_buffer.insert_text("\n")
+
+
+def enable_enhanced_keyboard_protocol(
+    stream: TextIO | None = None,
+) -> str | None:
+    """Enable a supported protocol that distinguishes physical Shift+Enter."""
+
+    output = stream or sys.stdout
+    if not output.isatty():
+        return None
+
+    term = os.environ.get("TERM", "").lower()
+    term_program = os.environ.get("TERM_PROGRAM", "").lower()
+    kitty_protocol = (
+        any(name in term for name in ("kitty", "foot", "ghostty", "wezterm"))
+        or term_program in {"kitty", "foot", "ghostty", "wezterm"}
+        or any(
+            variable in os.environ
+            for variable in ("KITTY_WINDOW_ID", "WEZTERM_PANE", "GHOSTTY_RESOURCES_DIR")
+        )
+    )
+    if kitty_protocol:
+        output.write("\x1b[>1u")
+        protocol = "kitty"
+    elif term and term != "dumb":
+        # xterm's modifyOtherKeys protocol is also understood by several
+        # Linux/macOS terminals and recent Windows terminal frontends.
+        output.write("\x1b[>4;2m")
+        protocol = "xterm"
+    else:
+        return None
+    output.flush()
+    return protocol
+
+
+def disable_enhanced_keyboard_protocol(
+    protocol: str | None,
+    stream: TextIO | None = None,
+) -> None:
+    """Restore the terminal keyboard protocol enabled for the prompt."""
+
+    if protocol is None:
+        return
+    output = stream or sys.stdout
+    output.write("\x1b[<u" if protocol == "kitty" else "\x1b[>4;0m")
+    output.flush()
+
+
 console = Console()
 
 
@@ -79,32 +164,15 @@ class MarkdownStreamRenderer:
 def contains_json(text: str) -> bool:
     return parse(text) is not None
 
-def show_help():
-    help_text = f"""
-## NEURO-CLI 命令帮助
+def build_bottom_toolbar() -> str:
+    """Build live model and directory information."""
 
-| 命令 | 说明 |
-|------|------|
-| `/help` | 显示本帮助 |
-| `/exit` | 退出程序 |
-| `/clear` | 清屏并重置对话历史 |
-| `/reset` | 仅重置对话历史（不清屏） |
-| `/echo <内容>` | 回显内容（测试用） |
-
-**多行输入**：按 `Esc` 然后按 `Enter` 提交。  
-**历史记录**：上下键浏览。  
-**语法高亮**：输入 Python 代码时会自动高亮。
-    """
-    console.print(Markdown(help_text))
-
-def handle_echo(arg: str):
-    if not arg.strip():
-        console.print("[yellow]请在 /echo 后面写一些内容[/yellow]")
-    else:
-        console.print(Panel(arg.strip(), title="[bold]ECHO[/bold]", border_style="cyan"))
-
-def clear_screen():
-    console.clear()
+    reasoning_effort = REASONING_EFFORT or "默认"
+    if not REASONING_ENABLED:
+        reasoning_effort = "关闭"
+    return (
+        f" {MODEL} {reasoning_effort} · {get_current_path()}"
+    )
 
 def main():
     console.clear()
@@ -118,34 +186,39 @@ def main():
 """
     content = f"""[cyan]{logo}[/cyan]\n\nAn Open-source AI Agent Application With High Performance(迫真) based on Python \nUse [bold]/help[/bold] to see details...\n\n\nBASE_URL: {BASE_URL} \nMODEL: {MODEL} \nCURRENT_DIR: {get_current_path()} \n"""
     console.print(Panel.fit(content, border_style="cyan"))
-    print("TIP: 默认情况下您处于多行输入环境下，若需要提交文本，请按 Esc 后再按 Enter 来提交")
+    # print("TIP: 按 Enter 提交文本，按 Shift+Enter 换行（兼容 Esc+Enter）")
+    print("")
 
-    msg_handler = MessageHandler()
+    session_manager = SessionManager()
+    command_manager = CommandManager(console, session_manager)
+    session = PromptSession(
+        history=session_manager.prompt_history,
+        auto_suggest=AutoSuggestFromHistory(),
+        key_bindings=input_key_bindings,
+        lexer=PygmentsLexer(PythonLexer),
+        multiline=True,
+    )
     while True:
         markdown_renderer = None
         try:
-            user_input = session.prompt("You > ", prompt_continuation="    > ")
+            keyboard_protocol = enable_enhanced_keyboard_protocol()
+            try:
+                user_input = session.prompt(
+                    "You > ",
+                    prompt_continuation="    > ",
+                    bottom_toolbar=build_bottom_toolbar,
+                )
+            finally:
+                disable_enhanced_keyboard_protocol(keyboard_protocol)
             if not user_input.strip():
                 continue
             if user_input.startswith("/"):
-                parts = user_input.strip().split(maxsplit=1)
-                cmd = parts[0].lower()
-                arg = parts[1] if len(parts) > 1 else ""
-                if cmd == "/exit":
-                    console.print("[bold yellow]再见！[/bold yellow]")
+                if command_manager.execute(user_input):
                     break
-                elif cmd == "/help":
-                    show_help()
-                elif cmd == "/clear":
-                    clear_screen()
-                    msg_handler.reset()
-                elif cmd == "/reset":
-                    msg_handler.reset()
-                elif cmd == "/echo":
-                    handle_echo(arg)
-                else:
-                    console.print(f"[red]未知命令: {cmd}[/red] 输入 /help 查看帮助")
                 continue
+            session_manager.ensure_current_session()
+            session_manager.activate_current_session()
+            msg_handler = session_manager.current_handler
             if msg_handler.use_stream:
                 full_stream_reply = ""
                 if msg_handler.reasoning_enabled:
@@ -264,6 +337,11 @@ def main():
                 markdown_renderer.stop()
             console.print("\n[bold yellow]检测到退出信号，再见！[/bold yellow]")
             break
+        finally:
+            try:
+                session_manager.save_current_session()
+            except (OSError, TypeError, ValueError) as exc:
+                console.print(f"[bold red]保存 session 失败：{exc}[/bold red]")
 
 if __name__ == "__main__":
     main()

@@ -3,6 +3,7 @@
 
 # history
 .neuro_cli_history
+session/
 
 # debug folder
 debug/
