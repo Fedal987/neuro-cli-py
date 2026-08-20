@@ -26,7 +26,6 @@ NeuroCode 不仅仅是一个聊天机器人，它还是一个非常有用的工�
 - 写插件系统
 - 写导入skills
 - 用rust重写(?)
-- 修改file_editor.py解析方式
 
 # 部署步骤  
 
@@ -45,13 +44,13 @@ uv venv # 创建虚拟环境
 uv pip install requirements.txt # 安装依赖
 ```
 
-### Linux(Arch)
+### Linux(Arch fish shell)
 
 ```bash
 git clone https://github.com/Fedal987/neurocode-py.git # 克隆仓库
 python3 pip install uv # 安装环境包管理器
 uv venv # 创建虚拟环境
-.venv\Scripts\activate # 激活虚拟环境
+source .venv\bin\activate.fish # 激活虚拟环境
 uv pip install requirements.txt # 安装依赖
 ```
 
