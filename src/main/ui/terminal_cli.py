@@ -104,21 +104,15 @@ def disable_enhanced_keyboard_protocol(
     protocol: str | None,
     stream: TextIO | None = None,
 ) -> None:
-    """Restore the terminal keyboard protocol enabled for the prompt."""
-
     if protocol is None:
         return
     output = stream or sys.stdout
     output.write("\x1b[<u" if protocol == "kitty" else "\x1b[>4;0m")
     output.flush()
-
-
 console = Console()
 
 
 class MarkdownStreamRenderer:
-    """Re-render accumulated Markdown whenever a new stream chunk arrives."""
-
     def __init__(self, target_console: Console, refresh_interval: float = 0.08):
         self.console = target_console
         self.parts: list[str] = []
@@ -165,11 +159,9 @@ def contains_json(text: str) -> bool:
     return parse(text) is not None
 
 def build_bottom_toolbar() -> str:
-    """Build live model and directory information."""
-
-    reasoning_effort = REASONING_EFFORT or "默认"
+    reasoning_effort = REASONING_EFFORT or "default"
     if not REASONING_ENABLED:
-        reasoning_effort = "关闭"
+        reasoning_effort = "reasoning-off"
     return (
         f" {MODEL} {reasoning_effort} · {get_current_path()}"
     )
@@ -225,7 +217,7 @@ def main():
                     displayed_kind = None
                     markdown_renderer = MarkdownStreamRenderer(console)
                     events = iter(msg_handler.get_response_events(user_input))
-                    with console.status("[bold blue]Neuro 等待模型响应...[/bold blue]"):
+                    with console.status("[bold blue]Neuro 祈祷中...[/bold blue]"):
                         first_event = next(events, None)
                     event_stream = chain((first_event,), events) if first_event is not None else ()
                     for event in event_stream:
@@ -238,7 +230,7 @@ def main():
                                     console.print()
                                 leading_newline = "\n" if displayed_kind is None else ""
                                 console.print(
-                                    f"{leading_newline}[dim italic cyan]Neuro 思考[/dim italic cyan] > ",
+                                    f"{leading_newline}[dim italic cyan]Thinking...[/dim italic cyan]\n > ",
                                     end="",
                                 )
                                 displayed_kind = "reasoning"
@@ -265,7 +257,7 @@ def main():
                                 markdown_renderer = MarkdownStreamRenderer(console)
                             if displayed_kind is not None:
                                 console.print()
-                            label = "Neuro 工具" if event.kind == "tool" else "工具结果"
+                            label = "ToolCall" if event.kind == "tool" else "工具结果"
                             style = "dim yellow" if event.kind == "tool" else "dim green"
                             console.print(f"[{style}]{label}[/] > ", end="")
                             console.print(event.content, style=style, markup=False)
@@ -278,7 +270,7 @@ def main():
                                 console.print()
                             leading_newline = "\n" if displayed_kind is None else ""
                             console.print(
-                                f"{leading_newline}[bold red]Neuro 错误[/bold red] > ",
+                                f"{leading_newline}[bold red]Error: [/bold red] > ",
                                 end="",
                             )
                             console.print(
@@ -295,7 +287,7 @@ def main():
                     console.print("\n[bold magenta]Neuro[/bold magenta] >")
                     markdown_renderer = MarkdownStreamRenderer(console)
                     chunks = iter(msg_handler.get_response_stream(user_input))
-                    with console.status("[bold blue]Neuro 等待模型响应...[/bold blue]"):
+                    with console.status("[bold blue]Neuro 祈祷中...[/bold blue]"):
                         first_chunk = next(chunks, None)
                     chunk_stream = chain((first_chunk,), chunks) if first_chunk is not None else ()
                     for chunk in chunk_stream:
@@ -312,7 +304,7 @@ def main():
                         console.print(Markdown(final_reply))
                         console.print()
             else:
-                with console.status("[bold blue]Neuro祈祷中...[/bold blue]"):
+                with console.status("[bold blue]Neuro 祈祷中...[/bold blue]"):
                     reply = msg_handler.get_response(user_input)
                 console.print("\n[bold magenta]Neuro[/bold magenta] >")
                 console.print(Markdown(reply))
@@ -330,7 +322,7 @@ def main():
         except KeyboardInterrupt:
             if markdown_renderer is not None:
                 markdown_renderer.stop()
-            console.print("\n[dim]按 Ctrl+C 再次退出，或输入 /exit[/dim]")
+            console.print("\n[dim]Press Ctrl+C again to Interrupt，or input /exit[/dim]")
             continue
         except EOFError:
             if markdown_renderer is not None:

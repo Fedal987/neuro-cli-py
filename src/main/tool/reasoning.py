@@ -211,7 +211,7 @@ class Agent:
             ),
             self._tool(
                 "run_command",
-                "Run a non-interactive command in the workspace for inspection, tests, linting, or builds. Shell operators are not supported.",
+                "Run a non-interactive command in the workspace for inspection, tests, linting, or builds. Read-only low-risk commands run without approval; other commands require user approval. Shell operators are not supported.",
                 {
                     "command": {"type": "string", "description": "Command line parsed without a shell."},
                 },
@@ -706,7 +706,8 @@ class Agent:
             raise ToolError("命令不能为空")
         if arguments[0] in {"rm", "sudo", "su", "shutdown", "reboot", "mkfs", "dd"}:
             raise ToolError(f"出于安全原因不允许执行命令: {arguments[0]}")
-        self._require_approval(f"执行命令: {command}")
+        if not self._is_low_risk_command(arguments):
+            self._require_approval(f"执行命令: {command}")
         try:
             completed = subprocess.run(
                 arguments,
@@ -727,6 +728,87 @@ class Agent:
         if completed.returncode != 0:
             raise ToolError(self._truncate(result))
         return self._truncate(result)
+
+    @staticmethod
+    def _is_low_risk_command(arguments: list[str]) -> bool:
+        """Return whether a command is narrowly read-only and safe to auto-run."""
+
+        command = Path(arguments[0]).name
+        if any(
+            argument.startswith(("/", "~")) or ".." in Path(argument).parts
+            for argument in arguments[1:]
+        ):
+            return False
+
+        if command in {
+            "basename",
+            "cat",
+            "cut",
+            "dirname",
+            "du",
+            "file",
+            "grep",
+            "head",
+            "id",
+            "ls",
+            "pwd",
+            "stat",
+            "tail",
+            "uname",
+            "uniq",
+            "wc",
+            "whoami",
+        }:
+            return True
+
+        if command == "rg":
+            return not any(
+                argument == "--pre" or argument.startswith("--pre=")
+                for argument in arguments[1:]
+            )
+
+        if command == "sed":
+            return not any(
+                argument == "-i"
+                or argument.startswith("-i")
+                or argument == "--in-place"
+                or argument.startswith("--in-place=")
+                for argument in arguments[1:]
+            )
+
+        if command == "sort":
+            return not any(
+                argument == "-o"
+                or argument.startswith("-o")
+                or argument.startswith("--output=")
+                for argument in arguments[1:]
+            )
+
+        if command == "git" and len(arguments) >= 2:
+            read_only_subcommand = arguments[1] in {
+                "diff",
+                "grep",
+                "log",
+                "rev-parse",
+                "show",
+                "status",
+            }
+            unsafe_options = {
+                "--ext-diff",
+                "--textconv",
+                "--open-files-in-pager",
+            }
+            writes_output = any(
+                argument == "--output" or argument.startswith("--output=")
+                for argument in arguments[2:]
+            )
+            return (
+                read_only_subcommand
+                and not writes_output
+                and not unsafe_options.intersection(arguments[2:])
+            )
+
+        return False
 
     def _require_approval(self, description: str) -> None:
         if self.auto_approve:
