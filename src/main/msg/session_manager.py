@@ -27,8 +27,6 @@ SESSION_FORMAT_VERSION = 1
 
 @dataclass
 class Session:
-    """One persistent conversation and its input history."""
-
     name: str
     handler: MessageHandler
     workspace: Path = field(default_factory=lambda: Path.cwd().resolve())
@@ -40,8 +38,6 @@ class Session:
 
 
 class SessionPromptHistory(History):
-    """Expose the active session's persisted inputs to prompt_toolkit."""
-
     def __init__(self, manager: SessionManager) -> None:
         super().__init__()
         self.manager = manager
@@ -60,15 +56,11 @@ class SessionPromptHistory(History):
         self.manager.append_input_history(string)
 
     def select_current_session(self) -> None:
-        """Discard prompt_toolkit's cache after the active session changes."""
-
         self._loaded = False
         self._loaded_strings = []
 
 
 class SessionManager:
-    """Create, persist, select, and switch independent chat sessions."""
-
     def __init__(
         self,
         session_factory: Callable[[], MessageHandler] | None = None,
@@ -78,11 +70,8 @@ class SessionManager:
         name_generator: Callable[[list[dict[str, Any]]], str | None] | None = None,
     ) -> None:
         if session_factory is None:
-            # Import lazily so importing this module does not initialize the API client.
             from src.main.msg.message_handler import MessageHandler
-
             session_factory = MessageHandler
-
         self._session_factory = session_factory
         self._workspace_provider = workspace_provider
         self._name_generator = name_generator or self._generate_name_with_llm
@@ -94,7 +83,6 @@ class SessionManager:
         self.prompt_history = SessionPromptHistory(self)
         self.load_errors: list[str] = []
         self.naming_errors: list[str] = []
-
         self._load_sessions()
         self._create_temporary_session()
 
@@ -104,36 +92,26 @@ class SessionManager:
 
     @property
     def current_name(self) -> str | None:
-        """Return the name of the currently selected session."""
-
         return self._current_name
 
     @property
     def current_session(self) -> Session:
-        """Return the currently selected session."""
-
         if self._current_name is None:
             raise RuntimeError("当前没有可用的 session")
         return self._sessions[self._current_name]
 
     @property
     def current_handler(self) -> MessageHandler:
-        """Return the message handler of the currently selected session."""
-
         return self.current_session.handler
 
     @property
     def current_workspace(self) -> Path:
-        """Return the resolved directory currently used to scope sessions."""
-
         return Path(self._workspace_provider()).expanduser().resolve()
 
     def list_sessions(
         self,
         workspace: str | Path | None = None,
     ) -> tuple[Session, ...]:
-        """Return sessions in creation order, optionally filtered by directory."""
-
         sessions = tuple(
             sorted(self._sessions.values(), key=lambda item: item.created_at)
         )
@@ -155,8 +133,6 @@ class SessionManager:
         auto_name: bool | None = None,
         temporary: bool = False,
     ) -> Session:
-        """Create a session and optionally make it the current one."""
-
         replace_temporary = (
             switch
             and not temporary
@@ -193,15 +169,11 @@ class SessionManager:
         return new_session
 
     def ensure_current_session(self) -> Session:
-        """Lazily create this launch's session when the first chat is sent."""
-
         if self.has_current_session:
             return self.current_session
         return self._create_temporary_session()
 
     def activate_current_session(self) -> Session:
-        """Turn the in-memory startup session into a persistent chat session."""
-
         session = self.ensure_current_session()
         if session.temporary:
             session.temporary = False
@@ -215,8 +187,6 @@ class SessionManager:
         *,
         workspace: str | Path | None = None,
     ) -> Session:
-        """Switch by name or 1-based number, optionally within one directory."""
-
         name = self._resolve_target(target, workspace=workspace)
         if (
             self.has_current_session
@@ -238,20 +208,15 @@ class SessionManager:
         input_func: Callable[[str], str] = input,
         output_func: Callable[[str], None] = print,
     ) -> Session | None:
-        """Select directly, or show an interactive numbered selector."""
-
         if choice is not None:
             return self.switch_session(choice)
-
         output_func("可用 sessions：")
         for index, session in enumerate(self.list_sessions(), start=1):
             marker = " *" if session.name == self.current_name else ""
             output_func(f"  {index}. {session.name}{marker}")
-
         selected = input_func("选择 session（输入编号或名称，直接回车取消）: ").strip()
         if not selected or selected.lower() == "q":
             return None
-
         target: str | int = int(selected) if selected.isdigit() else selected
         try:
             return self.switch_session(target)
@@ -259,16 +224,12 @@ class SessionManager:
             raise ValueError(f"无法选择 session: {selected}") from exc
 
     def append_input_history(self, text: str) -> None:
-        """Append one prompt entry to the active session and persist it."""
-
         self.activate_current_session()
         self.current_session.input_history.append(text)
         self.current_session.last_used_at = datetime.now()
         self.save_current_session()
 
     def reset_current_session(self) -> None:
-        """Reset the current conversation while retaining its input history."""
-
         if not self.has_current_session:
             return
         self.current_handler.reset()
@@ -276,8 +237,6 @@ class SessionManager:
         self.save_current_session()
 
     def auto_name_current_session(self) -> str | None:
-        """Ask the LLM for a title after the first complete conversation turn."""
-
         if not self.has_current_session:
             return None
         session = self.current_session
@@ -290,7 +249,6 @@ class SessionManager:
         }
         if not {"user", "assistant"}.issubset(roles):
             return None
-
         try:
             generated = self._name_generator(session.handler.history)
             title = self._clean_generated_name(generated)
@@ -299,7 +257,6 @@ class SessionManager:
             return None
         if not title:
             return None
-
         unique_title = self._unique_name(title, exclude=session.name)
         old_name = session.name
         self._rename_session(old_name, unique_title)
@@ -314,8 +271,6 @@ class SessionManager:
         return unique_title
 
     def save_current_session(self) -> None:
-        """Auto-name an eligible session, then persist its latest state."""
-
         if not self.has_current_session:
             return
         if self.current_session.auto_name_pending:
@@ -327,8 +282,6 @@ class SessionManager:
             self.save_session(session)
 
     def save_session(self, session: Session) -> None:
-        """Atomically save one session as JSON in a ``.session`` file."""
-
         if session.temporary:
             return
         self.session_directory.mkdir(parents=True, exist_ok=True)
@@ -377,7 +330,6 @@ class SessionManager:
             isinstance(item, str) for item in input_history
         ):
             raise ValueError("input_history 格式无效")
-
         handler = self._session_factory()
         if messages:
             handler.history[:] = messages

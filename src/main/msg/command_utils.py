@@ -1,19 +1,13 @@
-"""Slash-command registration and handling for NeuroCode's terminal UI."""
 
 from __future__ import annotations
-
 from collections.abc import Callable
-
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-
 from src.main.msg.session_manager import SessionManager
 
 
 class CommandManager:
-    """Dispatch all CLI slash commands from one place."""
-
     def __init__(self, console: Console, session_manager: SessionManager) -> None:
         self.console = console
         self.session_manager = session_manager
@@ -27,8 +21,6 @@ class CommandManager:
         }
 
     def execute(self, user_input: str) -> bool:
-        """Execute a slash command and return whether the CLI should exit."""
-
         parts = user_input.strip().split(maxsplit=1)
         command = parts[0].lower()
         argument = parts[1] if len(parts) > 1 else ""

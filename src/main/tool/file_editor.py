@@ -13,6 +13,7 @@ from json_repair import repair_json
 from typing import Dict, Any, Optional, Tuple, List
 
 debug_mode = False
+_fullcontrol_enabled = False
 
 def contains_json(text: str) -> bool:
     try:
@@ -116,11 +117,20 @@ def replace_in_file(file_path: Path, old_content: str, new_content: str) -> Tupl
         return False, str(e)
 
 def ask_permission(action: str, file_path: str) -> bool:
+    global _fullcontrol_enabled
+    if _fullcontrol_enabled:
+        return True
     print(f"\n[权限请求] LLM 想要执行 {action} 操作于文件: {file_path}")
-    response = input("是否允许？(y/n): ").strip().lower()
+    response = input("是否允许？(y/N/fc): ").strip().lower()
+    if response == "fc":
+        _fullcontrol_enabled = True
+        return True
     return response in ('y', 'yes', '是')
 
 def show_diff_and_confirm(original_content: str, new_content: str, file_path: str) -> bool:
+    global _fullcontrol_enabled
+    if _fullcontrol_enabled:
+        return True
     print(f"\n[修改预览] 文件: {file_path}")
     diff = difflib.unified_diff(
         original_content.splitlines(keepends=True),
@@ -134,13 +144,13 @@ def show_diff_and_confirm(original_content: str, new_content: str, file_path: st
         print(diff_text)
     else:
         print("内容无变化。")
-    response = input("确认执行此修改吗？(y/n): ").strip().lower()
+    response = input("确认执行此修改吗？(y/N/fc): ").strip().lower()
+    if response == "fc":
+        _fullcontrol_enabled = True
+        return True
     return response in ('y', 'yes', '是')
 
 def extract_all_json(text: str) -> List[str]:
-    """
-    已看懂，另外不要写日文commit了(恼)   ---Fedal987
-    """
     results = []
     i = 0
     n = len(text)

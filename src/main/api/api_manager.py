@@ -7,7 +7,7 @@
 
 try:
     import tomllib
-except ModuleNotFoundError:  # Python 3.10 compatibility
+except ModuleNotFoundError:
     import tomli as tomllib
 from openai import OpenAI
 from pathlib import Path

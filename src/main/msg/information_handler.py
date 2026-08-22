@@ -18,7 +18,6 @@ def _safe_call(callback, default):
     except (OSError, PermissionError, requests.RequestException):
         return default
 
-
 os = platform.system()
 cpu_core_count = _safe_call(lambda: psutil.cpu_count(logical=False), None)
 cpu_usage = _safe_call(lambda: psutil.cpu_percent(interval=None), None)

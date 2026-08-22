@@ -26,7 +26,6 @@ from src.main.api.api_manager import (
 from src.main.tool.reasoning import Agent, StreamEvent
 
 class MessageHandler:
-
     def __init__(self, system_prompt: str = None, reasoning_enabled: bool = REASONING_ENABLED):
         self.system_prompt = system_prompt or SYSTEM_PROMPT
         self.reasoning_enabled = reasoning_enabled

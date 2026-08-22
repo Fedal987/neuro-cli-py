@@ -5,6 +5,8 @@
 .neuro_cli_history
 session/
 
+tests/
+
 # debug folder
 debug/
 

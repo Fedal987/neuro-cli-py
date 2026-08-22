@@ -32,13 +32,8 @@ from src.main.msg.command_utils import CommandManager
 from src.main.msg.session_manager import SessionManager
 from src.main.tool.file_editor import editor, get_current_path, parse
 
-# Keep the Shift modifier for terminals that use xterm's modifyOtherKeys or
-# Kitty's CSI-u encoding. prompt_toolkit otherwise treats these as plain Enter.
 for shift_enter_sequence in ("\x1b[27;2;13~", "\x1b[13;2u"):
     ANSI_SEQUENCES[shift_enter_sequence] = (Keys.Escape, Keys.ControlM)
-
-# Kitty's disambiguated keyboard mode also changes Ctrl+A...Z from C0 bytes to
-# CSI-u sequences. Preserve prompt_toolkit's existing shortcuts in that mode.
 for letter_index, letter in enumerate("abcdefghijklmnopqrstuvwxyz", start=1):
     control_key = getattr(Keys, f"Control{letter.upper()}")
     ANSI_SEQUENCES[f"\x1b[{ord(letter)};5u"] = control_key
@@ -48,30 +43,22 @@ ANSI_SEQUENCES["\x1b[32;5u"] = Keys.ControlAt
 ANSI_SEQUENCES["\x1b[91;5u"] = Keys.Escape
 ANSI_SEQUENCES["\x1b[92;5u"] = Keys.ControlBackslash
 ANSI_SEQUENCES["\x1b[93;5u"] = Keys.ControlSquareClose
-
 input_key_bindings = KeyBindings()
 
-
 @input_key_bindings.add("enter")
+
 def submit_input(event) -> None:
-    """Submit the current input when Enter is pressed."""
-
     event.current_buffer.validate_and_handle()
-
 
 @input_key_bindings.add("escape", "enter")
 @input_key_bindings.add("c-j")
+
 def insert_line_break(event) -> None:
-    """Insert a line break for Shift+Enter-compatible terminal sequences."""
-
     event.current_buffer.insert_text("\n")
-
 
 def enable_enhanced_keyboard_protocol(
     stream: TextIO | None = None,
 ) -> str | None:
-    """Enable a supported protocol that distinguishes physical Shift+Enter."""
-
     output = stream or sys.stdout
     if not output.isatty():
         return None
@@ -90,15 +77,12 @@ def enable_enhanced_keyboard_protocol(
         output.write("\x1b[>1u")
         protocol = "kitty"
     elif term and term != "dumb":
-        # xterm's modifyOtherKeys protocol is also understood by several
-        # Linux/macOS terminals and recent Windows terminal frontends.
         output.write("\x1b[>4;2m")
         protocol = "xterm"
     else:
         return None
     output.flush()
     return protocol
-
 
 def disable_enhanced_keyboard_protocol(
     protocol: str | None,
@@ -110,7 +94,6 @@ def disable_enhanced_keyboard_protocol(
     output.write("\x1b[<u" if protocol == "kitty" else "\x1b[>4;0m")
     output.flush()
 console = Console()
-
 
 class MarkdownStreamRenderer:
     def __init__(self, target_console: Console, refresh_interval: float = 0.08):
@@ -178,7 +161,6 @@ def main():
 """
     content = f"""[cyan]{logo}[/cyan]\n\nAn Open-source AI Agent Application With High Performance(迫真) based on Python \nUse [bold]/help[/bold] to see details...\n\n\nBASE_URL: {BASE_URL} \nMODEL: {MODEL} \nCURRENT_DIR: {get_current_path()} \n"""
     console.print(Panel.fit(content, border_style="cyan"))
-    # print("TIP: 按 Enter 提交文本，按 Shift+Enter 换行（兼容 Esc+Enter）")
     print("")
 
     session_manager = SessionManager()

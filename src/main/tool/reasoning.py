@@ -731,8 +731,6 @@ class Agent:
 
     @staticmethod
     def _is_low_risk_command(arguments: list[str]) -> bool:
-        """Return whether a command is narrowly read-only and safe to auto-run."""
-
         command = Path(arguments[0]).name
         if any(
             argument.startswith(("/", "~")) or ".." in Path(argument).parts
@@ -807,7 +805,6 @@ class Agent:
                 and not writes_output
                 and not unsafe_options.intersection(arguments[2:])
             )
-
         return False
 
     def _require_approval(self, description: str) -> None:
@@ -816,10 +813,15 @@ class Agent:
         if not self.confirm(description):
             raise ToolError(f"用户拒绝了操作: {description}")
 
-    @staticmethod
-    def _terminal_confirm(description: str) -> bool:
-        answer = input(f"\n[权限请求] Neuro 想要{description}，是否允许？(y/N): ")
-        return answer.strip().lower() in {"y", "yes", "是"}
+    def _terminal_confirm(self, description: str) -> bool:
+        answer = input(
+            f"\n[权限请求] Neuro 想要{description}，是否允许？"
+            "(y/N/fc): "
+        ).strip().lower()
+        if answer == "fc":
+            self.auto_approve = True
+            return True
+        return answer in {"y", "yes", "是"}
 
     @staticmethod
     def _truncate(text: str, limit: int = 20000) -> str:
