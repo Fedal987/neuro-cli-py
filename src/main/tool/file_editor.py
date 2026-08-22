@@ -11,6 +11,7 @@ import difflib
 from pathlib import Path
 from json_repair import repair_json
 from typing import Dict, Any, Optional, Tuple, List
+from src.main.ui.i18n import tr
 
 debug_mode = False
 _fullcontrol_enabled = False
@@ -73,7 +74,7 @@ def parse(raw_text: str) -> Optional[Dict[str, Any]]:
             return json.loads(fixed_str)
         except Exception as e:
             if debug_mode:
-                print(f"[JSON 解析错误] {e}")
+                print(tr("json_parse_error", error=e))
             else:
                 pass
             return None
@@ -120,35 +121,42 @@ def ask_permission(action: str, file_path: str) -> bool:
     global _fullcontrol_enabled
     if _fullcontrol_enabled:
         return True
-    print(f"\n[权限请求] LLM 想要执行 {action} 操作于文件: {file_path}")
-    response = input("是否允许？(y/N/fc): ").strip().lower()
+    action_label = {
+        "读取": tr("action_read"),
+        "read": tr("action_read"),
+        "write": tr("action_write"),
+        "append": tr("action_append"),
+        "replace": tr("action_replace"),
+    }.get(action, action)
+    print(f"\n{tr('file_permission_request', action=action_label, path=file_path)}")
+    response = input(tr("permission_prompt")).strip().lower()
     if response == "fc":
         _fullcontrol_enabled = True
         return True
-    return response in ('y', 'yes', '是')
+    return response in ('y', 'yes', '是', 'はい', 'oui', 'ja', 'sim', 'да')
 
 def show_diff_and_confirm(original_content: str, new_content: str, file_path: str) -> bool:
     global _fullcontrol_enabled
     if _fullcontrol_enabled:
         return True
-    print(f"\n[修改预览] 文件: {file_path}")
+    print(f"\n{tr('change_preview', path=file_path)}")
     diff = difflib.unified_diff(
         original_content.splitlines(keepends=True),
         new_content.splitlines(keepends=True),
-        fromfile=f"原文件 {file_path}",
-        tofile=f"新文件 {file_path}"
+        fromfile=tr("original_file", path=file_path),
+        tofile=tr("new_file", path=file_path)
     )
     diff_text = ''.join(diff)
     if diff_text:
-        print("差异如下：")
+        print(tr("diff_heading"))
         print(diff_text)
     else:
-        print("内容无变化。")
-    response = input("确认执行此修改吗？(y/N/fc): ").strip().lower()
+        print(tr("no_changes"))
+    response = input(tr("confirm_change_prompt")).strip().lower()
     if response == "fc":
         _fullcontrol_enabled = True
         return True
-    return response in ('y', 'yes', '是')
+    return response in ('y', 'yes', '是', 'はい', 'oui', 'ja', 'sim', 'да')
 
 def extract_all_json(text: str) -> List[str]:
     results = []

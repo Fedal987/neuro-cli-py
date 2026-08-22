@@ -28,6 +28,7 @@ from src.main.api.api_manager import (
     REASONING_EFFORT,
     REASONING_ENABLED,
 )
+from src.main.ui.i18n import LANGUAGE_NAMES, get_language, set_language, tr
 from src.main.msg.command_utils import CommandManager
 from src.main.msg.session_manager import SessionManager
 from src.main.tool.file_editor import editor, get_current_path, parse
@@ -94,6 +95,14 @@ def disable_enhanced_keyboard_protocol(
     output.write("\x1b[<u" if protocol == "kitty" else "\x1b[>4;0m")
     output.flush()
 console = Console()
+LOGO = r"""
+███╗   ██╗███████╗██╗   ██╗██████╗  ██████╗      ██████╗██╗     ██╗
+████╗  ██║██╔════╝██║   ██║██╔══██╗██╔═══██╗    ██╔════╝██║     ██║
+██╔██╗ ██║█████╗  ██║   ██║██████╔╝██║   ██║    ██║     ██║     ██║
+██║╚██╗██║██╔══╝  ██║   ██║██╔══██╗██║   ██║    ██║     ██║     ██║
+██║ ╚████║███████╗╚██████╔╝██║  ██║╚██████╔╝    ╚██████╗███████╗██║
+╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝      ╚═════╝╚══════╝╚═╝
+"""
 
 class MarkdownStreamRenderer:
     def __init__(self, target_console: Console, refresh_interval: float = 0.08):
@@ -142,29 +151,41 @@ def contains_json(text: str) -> bool:
     return parse(text) is not None
 
 def build_bottom_toolbar() -> str:
-    reasoning_effort = REASONING_EFFORT or "default"
+    reasoning_effort = REASONING_EFFORT or tr("reasoning_default")
     if not REASONING_ENABLED:
-        reasoning_effort = "reasoning-off"
+        reasoning_effort = tr("reasoning_off")
     return (
         f" {MODEL} {reasoning_effort} · {get_current_path()}"
     )
 
-def main():
+
+def render_welcome() -> None:
+    """Clear the terminal and redraw the startup panel in the active language."""
     console.clear()
-    logo = r"""
-███╗   ██╗███████╗██╗   ██╗██████╗  ██████╗      ██████╗██╗     ██╗
-████╗  ██║██╔════╝██║   ██║██╔══██╗██╔═══██╗    ██╔════╝██║     ██║
-██╔██╗ ██║█████╗  ██║   ██║██████╔╝██║   ██║    ██║     ██║     ██║
-██║╚██╗██║██╔══╝  ██║   ██║██╔══██╗██║   ██║    ██║     ██║     ██║
-██║ ╚████║███████╗╚██████╔╝██║  ██║╚██████╔╝    ╚██████╗███████╗██║
-╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝      ╚═════╝╚══════╝╚═╝
-"""
-    content = f"""[cyan]{logo}[/cyan]\n\nAn Open-source AI Agent Application With High Performance(迫真) based on Python \nUse [bold]/help[/bold] to see details...\n\n\nBASE_URL: {BASE_URL} \nMODEL: {MODEL} \nCURRENT_DIR: {get_current_path()} \n"""
+    content = (
+        f"[cyan]{LOGO}[/cyan]\n\n{tr('tagline')}\n"
+        f"{tr('help_hint')}\n\n\n"
+        f"{tr('base_url')}: {BASE_URL}\n"
+        f"{tr('model')}: {MODEL}\n"
+        f"{tr('current_dir')}: {get_current_path()}\n"
+    )
     console.print(Panel.fit(content, border_style="cyan"))
-    print("")
+    console.print()
+
+
+def main():
+    render_welcome()
 
     session_manager = SessionManager()
-    command_manager = CommandManager(console, session_manager)
+    command_manager = CommandManager(
+        console,
+        session_manager,
+        translator=tr,
+        language_getter=get_language,
+        language_setter=set_language,
+        language_names=LANGUAGE_NAMES,
+        language_changed_callback=render_welcome,
+    )
     session = PromptSession(
         history=session_manager.prompt_history,
         auto_suggest=AutoSuggestFromHistory(),
@@ -178,7 +199,7 @@ def main():
             keyboard_protocol = enable_enhanced_keyboard_protocol()
             try:
                 user_input = session.prompt(
-                    "You > ",
+                    tr("user_prompt"),
                     prompt_continuation="    > ",
                     bottom_toolbar=build_bottom_toolbar,
                 )
@@ -199,7 +220,7 @@ def main():
                     displayed_kind = None
                     markdown_renderer = MarkdownStreamRenderer(console)
                     events = iter(msg_handler.get_response_events(user_input))
-                    with console.status("[bold blue]Neuro 祈祷中...[/bold blue]"):
+                    with console.status(f"[bold blue]{tr('waiting')}[/bold blue]"):
                         first_event = next(events, None)
                     event_stream = chain((first_event,), events) if first_event is not None else ()
                     for event in event_stream:
@@ -212,7 +233,7 @@ def main():
                                     console.print()
                                 leading_newline = "\n" if displayed_kind is None else ""
                                 console.print(
-                                    f"{leading_newline}[dim italic cyan]Thinking...[/dim italic cyan]\n > ",
+                                    f"{leading_newline}[dim italic cyan]{tr('thinking')}[/dim italic cyan]\n > ",
                                     end="",
                                 )
                                 displayed_kind = "reasoning"
@@ -239,7 +260,7 @@ def main():
                                 markdown_renderer = MarkdownStreamRenderer(console)
                             if displayed_kind is not None:
                                 console.print()
-                            label = "ToolCall" if event.kind == "tool" else "工具结果"
+                            label = tr("tool_call") if event.kind == "tool" else tr("tool_result")
                             style = "dim yellow" if event.kind == "tool" else "dim green"
                             console.print(f"[{style}]{label}[/] > ", end="")
                             console.print(event.content, style=style, markup=False)
@@ -252,7 +273,7 @@ def main():
                                 console.print()
                             leading_newline = "\n" if displayed_kind is None else ""
                             console.print(
-                                f"{leading_newline}[bold red]Error: [/bold red] > ",
+                                f"{leading_newline}[bold red]{tr('error')}: [/bold red] > ",
                                 end="",
                             )
                             console.print(
@@ -269,7 +290,7 @@ def main():
                     console.print("\n[bold magenta]Neuro[/bold magenta] >")
                     markdown_renderer = MarkdownStreamRenderer(console)
                     chunks = iter(msg_handler.get_response_stream(user_input))
-                    with console.status("[bold blue]Neuro 祈祷中...[/bold blue]"):
+                    with console.status(f"[bold blue]{tr('waiting')}[/bold blue]"):
                         first_chunk = next(chunks, None)
                     chunk_stream = chain((first_chunk,), chunks) if first_chunk is not None else ()
                     for chunk in chunk_stream:
@@ -286,7 +307,7 @@ def main():
                         console.print(Markdown(final_reply))
                         console.print()
             else:
-                with console.status("[bold blue]Neuro 祈祷中...[/bold blue]"):
+                with console.status(f"[bold blue]{tr('waiting')}[/bold blue]"):
                     reply = msg_handler.get_response(user_input)
                 console.print("\n[bold magenta]Neuro[/bold magenta] >")
                 console.print(Markdown(reply))
@@ -296,7 +317,7 @@ def main():
                     if not feedback.startswith("无法从您的回复中解析"):
                         msg_handler.add_user_message(feedback)
                         console.print("[bold magenta]Neuro[/bold magenta] >")
-                        with console.status("[bold blue]Neuro处理中...[/bold blue]"):
+                        with console.status(f"[bold blue]{tr('processing')}[/bold blue]"):
                             final_reply = msg_handler.get_response()
                         console.print(Markdown(final_reply))
                         console.print()
@@ -304,18 +325,20 @@ def main():
         except KeyboardInterrupt:
             if markdown_renderer is not None:
                 markdown_renderer.stop()
-            console.print("\n[dim]Press Ctrl+C again to Interrupt，or input /exit[/dim]")
+            console.print(f"\n[dim]{tr('interrupt_hint')}[/dim]")
             continue
         except EOFError:
             if markdown_renderer is not None:
                 markdown_renderer.stop()
-            console.print("\n[bold yellow]检测到退出信号，再见！[/bold yellow]")
+            console.print(f"\n[bold yellow]{tr('goodbye')}[/bold yellow]")
             break
         finally:
             try:
                 session_manager.save_current_session()
             except (OSError, TypeError, ValueError) as exc:
-                console.print(f"[bold red]保存 session 失败：{exc}[/bold red]")
+                console.print(
+                    f"[bold red]{tr('session_save_failed', error=exc)}[/bold red]"
+                )
 
 if __name__ == "__main__":
     main()

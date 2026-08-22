@@ -13,13 +13,14 @@ from openai import OpenAI
 from pathlib import Path
 
 from . import prompt_builder
+from src.main.ui.i18n import tr
 
 def _load_config():
     config_path = Path(__file__).parents[3] / "config.toml"
     if not config_path.exists():
         config_path = Path.cwd() / "config.toml"
     if not config_path.exists():
-        raise FileNotFoundError("未找到 config.toml 配置文件")
+        raise FileNotFoundError(tr("config_not_found"))
     with open(config_path, "r", encoding="utf-8") as f:
         return tomllib.loads(f.read())
 

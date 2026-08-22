@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 from prompt_toolkit.history import History
+from src.main.ui.i18n import tr
 
 if TYPE_CHECKING:
     from src.main.msg.message_handler import MessageHandler
@@ -97,7 +98,7 @@ class SessionManager:
     @property
     def current_session(self) -> Session:
         if self._current_name is None:
-            raise RuntimeError("当前没有可用的 session")
+            raise RuntimeError(tr("session_none_available"))
         return self._sessions[self._current_name]
 
     @property
@@ -145,13 +146,13 @@ class SessionManager:
                 replace_temporary and session_name == self.current_name
             )
             if duplicate:
-                raise ValueError(f"session 已存在: {session_name}")
+                raise ValueError(tr("session_exists", name=session_name))
         if replace_temporary:
             self._discard_current_temporary()
         if name is None:
             session_name = self._normalise_name(self._next_name())
         if session_name in self._sessions:
-            raise ValueError(f"session 已存在: {session_name}")
+            raise ValueError(tr("session_exists", name=session_name))
 
         new_session = Session(
             name=session_name,
@@ -210,18 +211,18 @@ class SessionManager:
     ) -> Session | None:
         if choice is not None:
             return self.switch_session(choice)
-        output_func("可用 sessions：")
+        output_func(tr("sessions_available"))
         for index, session in enumerate(self.list_sessions(), start=1):
             marker = " *" if session.name == self.current_name else ""
             output_func(f"  {index}. {session.name}{marker}")
-        selected = input_func("选择 session（输入编号或名称，直接回车取消）: ").strip()
+        selected = input_func(tr("session_select_prompt")).strip()
         if not selected or selected.lower() == "q":
             return None
         target: str | int = int(selected) if selected.isdigit() else selected
         try:
             return self.switch_session(target)
         except (IndexError, KeyError, ValueError) as exc:
-            raise ValueError(f"无法选择 session: {selected}") from exc
+            raise ValueError(tr("session_select_failed", selected=selected)) from exc
 
     def append_input_history(self, text: str) -> None:
         self.activate_current_session()
@@ -311,25 +312,25 @@ class SessionManager:
                 data = json.loads(session_path.read_text(encoding="utf-8"))
                 session = self._session_from_data(data)
                 if session.name in self._sessions:
-                    raise ValueError(f"session 名称重复: {session.name}")
+                    raise ValueError(tr("session_duplicate_name", name=session.name))
                 self._sessions[session.name] = session
             except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
                 self.load_errors.append(f"{session_path.name}: {exc}")
 
     def _session_from_data(self, data: Any) -> Session:
         if not isinstance(data, dict):
-            raise ValueError("session 内容必须是 JSON 对象")
+            raise ValueError(tr("session_json_object_required"))
         name = self._normalise_name(data.get("name", ""))
         messages = data.get("messages", [])
         input_history = data.get("input_history", [])
         if not isinstance(messages, list) or not all(
             isinstance(message, dict) for message in messages
         ):
-            raise ValueError("messages 格式无效")
+            raise ValueError(tr("session_messages_invalid"))
         if not isinstance(input_history, list) or not all(
             isinstance(item, str) for item in input_history
         ):
-            raise ValueError("input_history 格式无效")
+            raise ValueError(tr("session_history_invalid"))
         handler = self._session_factory()
         if messages:
             handler.history[:] = messages
@@ -357,17 +358,17 @@ class SessionManager:
     ) -> str:
         sessions = self.list_sessions(workspace=workspace)
         if isinstance(target, bool):
-            raise ValueError("session 编号必须是正整数")
+            raise ValueError(tr("session_number_positive"))
         if isinstance(target, int):
             if target < 1 or target > len(sessions):
-                raise IndexError(f"session 编号超出范围: {target}")
+                raise IndexError(tr("session_number_out_of_range", target=target))
             return sessions[target - 1].name
         if isinstance(target, str):
             name = self._normalise_name(target)
             if not any(session.name == name for session in sessions):
-                raise KeyError(f"session 不存在: {name}")
+                raise KeyError(tr("session_not_found", name=name))
             return name
-        raise TypeError("session 只能通过名称或编号选择")
+        raise TypeError(tr("session_selection_type"))
 
     def _session_path(self, name: str) -> Path:
         return self.session_directory / f"{quote(name, safe='')}.session"
@@ -464,10 +465,10 @@ class SessionManager:
     @staticmethod
     def _normalise_name(name: str) -> str:
         if not isinstance(name, str):
-            raise TypeError("session 名称必须是字符串")
+            raise TypeError(tr("session_name_string"))
         normalised = name.strip()
         if not normalised:
-            raise ValueError("session 名称不能为空")
+            raise ValueError(tr("session_name_empty"))
         return normalised
 
     @staticmethod

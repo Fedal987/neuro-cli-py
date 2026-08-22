@@ -8,11 +8,28 @@ from src.main.msg.session_manager import SessionManager
 
 
 class CommandManager:
-    def __init__(self, console: Console, session_manager: SessionManager) -> None:
+    def __init__(
+        self,
+        console: Console,
+        session_manager: SessionManager,
+        *,
+        translator: Callable[..., str] | None = None,
+        language_getter: Callable[[], str] | None = None,
+        language_setter: Callable[[str], str] | None = None,
+        language_names: dict[str, str] | None = None,
+        language_changed_callback: Callable[[], None] | None = None,
+    ) -> None:
         self.console = console
         self.session_manager = session_manager
+        self.tr = translator or (lambda key, **_values: key)
+        self.language_getter = language_getter or (lambda: "en")
+        self.language_setter = language_setter
+        self.language_names = language_names or {"en": "English"}
+        self.language_changed_callback = language_changed_callback
         self._commands: dict[str, Callable[[str], bool]] = {
             "/help": self._show_help,
+            "/lang": self._language,
+            "/language": self._language,
             "/exit": self._exit,
             "/clear": self._clear,
             "/reset": self._reset,
@@ -27,36 +44,73 @@ class CommandManager:
         handler = self._commands.get(command)
         if handler is None:
             self.console.print(
-                f"[red]未知命令: {command}[/red] 输入 /help 查看帮助"
+                f"[red]{self.tr('unknown_command', command=command)}[/red]"
             )
             return False
         return handler(argument)
 
     def _show_help(self, _argument: str) -> bool:
-        help_text = """
-## NEURO-CLI 命令帮助
-
-| 命令 | 说明 |
-|------|------|
-| `/help` | 显示本帮助 |
-| `/exit` | 退出程序 |
-| `/clear` | 清屏并重置当前 session |
-| `/reset` | 重置当前 session（不清屏） |
-| `/echo <内容>` | 回显内容（测试用） |
-| `/session` | 查看当前目录的 session |
-| `/session list` | 查看当前目录的 session |
-| `/session <名称或编号>` | 切换 session |
-| `/session new [名称]` | 创建并切换；省略名称时首轮对话后由 LLM 命名 |
-
-**输入方式**：按 `Enter` 提交，按 `Shift+Enter` 换行（兼容 `Esc+Enter`）。
-**历史记录**：上下键浏览。
-**语法高亮**：输入 Python 代码时会自动高亮。
-        """
+        rows = (
+            ("/help", "help_help"),
+            (self.tr("help_lang_command"), "help_lang"),
+            ("/exit", "help_exit"),
+            ("/clear", "help_clear"),
+            ("/reset", "help_reset"),
+            (self.tr("help_echo_command"), "help_echo"),
+            ("/session", "help_session"),
+            ("/session list", "help_session_list"),
+            (self.tr("help_session_switch_command"), "help_session_switch"),
+            (self.tr("help_session_new_command"), "help_session_new"),
+        )
+        table_rows = "\n".join(
+            f"| `{command}` | {self.tr(description)} |"
+            for command, description in rows
+        )
+        help_text = (
+            f"## {self.tr('help_title')}\n\n"
+            f"| {self.tr('help_command')} | {self.tr('help_description')} |\n"
+            "|---|---|\n"
+            f"{table_rows}\n\n"
+            f"**{self.tr('help_input_label')}**: {self.tr('help_input')}\n\n"
+            f"**{self.tr('help_history_label')}**: {self.tr('help_history')}\n\n"
+            f"**{self.tr('help_syntax_label')}**: {self.tr('help_syntax')}"
+        )
         self.console.print(Markdown(help_text))
         return False
 
+    def _language(self, argument: str) -> bool:
+        requested = argument.strip()
+        if not requested or requested.lower() == "list":
+            current = self.language_getter()
+            self.console.print(
+                f"[bold]{self.tr('language_current')}:[/bold] "
+                f"{self.language_names.get(current, current)} ({current})"
+            )
+            self.console.print(f"[bold]{self.tr('language_available')}:[/bold]")
+            for code, name in self.language_names.items():
+                self.console.print(f"  {code:<5} {name}")
+            self.console.print(f"[dim]{self.tr('language_usage')}[/dim]")
+            return False
+        if self.language_setter is None:
+            self.console.print(f"[red]{self.tr('language_unavailable')}[/red]")
+            return False
+        try:
+            selected = self.language_setter(requested)
+        except ValueError:
+            self.console.print(
+                f"[red]{self.tr('language_invalid', language=requested)}[/red]"
+            )
+            return False
+        name = self.language_names.get(selected, selected)
+        if self.language_changed_callback is not None:
+            self.language_changed_callback()
+        self.console.print(
+            f"[green]{self.tr('language_changed', language=name, code=selected)}[/green]"
+        )
+        return False
+
     def _exit(self, _argument: str) -> bool:
-        self.console.print("[bold yellow]再见！[/bold yellow]")
+        self.console.print(f"[bold yellow]{self.tr('goodbye')}[/bold yellow]")
         return True
 
     def _clear(self, _argument: str) -> bool:
@@ -66,22 +120,22 @@ class CommandManager:
 
     def _reset(self, _argument: str) -> bool:
         if not self.session_manager.has_current_session:
-            self.console.print("[dim]当前没有活动的 session[/dim]")
+            self.console.print(f"[dim]{self.tr('no_active_session')}[/dim]")
             return False
         self.session_manager.reset_current_session()
         self.console.print(
-            f"[green]session {self.session_manager.current_name!r} 已重置[/green]"
+            f"[green]{self.tr('session_reset', name=self.session_manager.current_name)}[/green]"
         )
         return False
 
     def _echo(self, argument: str) -> bool:
         if not argument.strip():
-            self.console.print("[yellow]请在 /echo 后面写一些内容[/yellow]")
+            self.console.print(f"[yellow]{self.tr('echo_required')}[/yellow]")
         else:
             self.console.print(
                 Panel(
                     argument.strip(),
-                    title="[bold]ECHO[/bold]",
+                    title=f"[bold]{self.tr('echo_title')}[/bold]",
                     border_style="cyan",
                 )
             )
@@ -99,10 +153,12 @@ class CommandManager:
             try:
                 selected = self.session_manager.create_session(name)
             except (OSError, TypeError, ValueError) as exc:
-                self.console.print(f"[red]创建 session 失败：{exc}[/red]")
+                self.console.print(
+                    f"[red]{self.tr('session_create_failed', error=exc)}[/red]"
+                )
                 return False
             self.console.print(
-                f"[green]已创建并切换到 session {selected.name!r}[/green]"
+                f"[green]{self.tr('session_created', name=selected.name)}[/green]"
             )
             return False
 
@@ -113,21 +169,30 @@ class CommandManager:
                 workspace=self.session_manager.current_workspace,
             )
         except (OSError, TypeError, ValueError, IndexError, KeyError) as exc:
-            self.console.print(f"[red]切换 session 失败：{exc}[/red]")
+            self.console.print(
+                f"[red]{self.tr('session_switch_failed', error=exc)}[/red]"
+            )
             return False
-        self.console.print(f"[green]已切换到 session {selected.name!r}[/green]")
+        self.console.print(
+            f"[green]{self.tr('session_switched', name=selected.name)}[/green]"
+        )
         return False
 
     def _show_sessions(self) -> None:
         workspace = self.session_manager.current_workspace
         sessions = self.session_manager.list_sessions(workspace=workspace)
-        self.console.print(f"[bold]当前目录的 sessions：[/bold] {workspace}")
+        self.console.print(
+            f"[bold]{self.tr('sessions_title')}:[/bold] {workspace}"
+        )
         if not sessions:
-            self.console.print("[dim]当前目录还没有 session[/dim]")
+            self.console.print(f"[dim]{self.tr('no_sessions')}[/dim]")
             return
         for index, session in enumerate(sessions, start=1):
-            temporary = " [yellow](临时)[/yellow]" if session.temporary else ""
-            marker = " [green](当前)[/green]" if (
+            temporary = (
+                f" [yellow]({self.tr('session_temporary')})[/yellow]"
+                if session.temporary else ""
+            )
+            marker = f" [green]({self.tr('session_current')})[/green]" if (
                 session.name == self.session_manager.current_name
             ) else ""
             self.console.print(f"  {index}. {session.name}{temporary}{marker}")

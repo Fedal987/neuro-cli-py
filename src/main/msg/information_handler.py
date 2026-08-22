@@ -10,6 +10,7 @@ import requests
 import socket
 import platform
 import psutil
+from src.main.ui.i18n import tr
 
 
 def _safe_call(callback, default):
@@ -35,7 +36,7 @@ def local_time():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
 def ip(include_global: bool = False):
-    local_address = "未知"
+    local_address = tr("unknown")
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as local_socket:
             local_socket.connect(("8.8.8.8", 80))
@@ -43,15 +44,14 @@ def ip(include_global: bool = False):
     except OSError:
         pass
 
-    global_address = "未查询"
+    global_address = tr("not_queried")
     if include_global:
         try:
             global_address = requests.get("https://myip.ipip.net", timeout=5).text
         except requests.RequestException:
-            global_address = "未知"
+            global_address = tr("unknown")
     return global_address, local_address
 
 if __name__ == "__main__":
     print(local_time())
     print(ip(include_global=True))
-

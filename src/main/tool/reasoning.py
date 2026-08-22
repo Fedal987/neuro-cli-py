@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import requests
+from src.main.ui.i18n import tr
 
 BASE_URL = ""
 MODEL = ""
@@ -132,11 +133,11 @@ class Agent:
         self._last_failed_call: str | None = None
 
         if not self.workspace.is_dir():
-            raise ValueError(f"工作目录不存在或不是目录: {self.workspace}")
+            raise ValueError(tr("workspace_invalid", path=self.workspace))
         if not self.base_url:
-            raise ValueError("BASE_URL 不能为空")
+            raise ValueError(tr("base_url_empty"))
         if not self.model:
-            raise ValueError("MODEL 不能为空")
+            raise ValueError(tr("model_empty"))
 
         self.messages: list[dict[str, Any]] = [
             {
@@ -265,7 +266,7 @@ class Agent:
             try:
                 message = self._request_completion()
             except ToolError as exc:
-                return self._record_error(f"Agent API 错误: {exc}")
+                return self._record_error(tr("agent_api_error", error=exc))
             assistant_message = {
                 "role": "assistant",
                 "content": message.get("content") or "",
@@ -298,7 +299,7 @@ class Agent:
         try:
             message = self._request_completion(use_tools=False)
         except ToolError as exc:
-            return self._record_error(f"Agent API 错误: {exc}")
+            return self._record_error(tr("agent_api_error", error=exc))
         content = message.get("content") or limit_message
         self.messages.append({"role": "assistant", "content": content})
         return content
@@ -338,13 +339,15 @@ class Agent:
                         yield StreamEvent("content", content)
                     self._merge_tool_call_deltas(tool_call_parts, delta.get("tool_calls") or [])
             except ToolError as exc:
-                yield StreamEvent("error", self._record_error(f"Agent API 错误: {exc}"))
+                yield StreamEvent(
+                    "error", self._record_error(tr("agent_api_error", error=exc))
+                )
                 return
 
             if not received_choice:
                 yield StreamEvent(
                     "error",
-                    self._record_error("Agent API 错误: 流式响应中没有有效的 choices"),
+                    self._record_error(tr("agent_api_no_choices")),
                 )
                 return
 
@@ -374,7 +377,7 @@ class Agent:
                     }
                 )
                 failed = "执行失败" in result or "已阻止" in result
-                status = "失败" if failed else "完成"
+                status = tr("tool_failed") if failed else tr("tool_completed")
                 yield StreamEvent("tool_result", f"{status}: {description}")
 
         limit_message = (
@@ -393,7 +396,9 @@ class Agent:
                     content_parts.append(content)
                     yield StreamEvent("content", content)
         except ToolError as exc:
-            yield StreamEvent("error", self._record_error(f"Agent API 错误: {exc}"))
+            yield StreamEvent(
+                "error", self._record_error(tr("agent_api_error", error=exc))
+            )
             return
         content = "".join(content_parts) or limit_message
         self.messages.append({"role": "assistant", "content": content})
@@ -410,13 +415,13 @@ class Agent:
             detail = ""
             if exc.response is not None:
                 detail = f": {exc.response.text[:2000]}"
-            raise ToolError(f"模型 API 请求失败 ({exc}){detail}") from exc
+            raise ToolError(tr("model_api_request_failed", error=exc, detail=detail)) from exc
         except ValueError as exc:
-            raise ToolError("模型 API 返回了无效 JSON") from exc
+            raise ToolError(tr("model_api_invalid_json")) from exc
 
         choices = data.get("choices") or []
         if not choices or not isinstance(choices[0].get("message"), dict):
-            raise ToolError(f"模型 API 响应缺少 choices[0].message: {str(data)[:2000]}")
+            raise ToolError(tr("model_api_missing_message", data=str(data)[:2000]))
         return choices[0]["message"]
 
     def _request_completion_stream(self, use_tools: bool = True):
@@ -442,16 +447,20 @@ class Agent:
                 try:
                     chunk = json.loads(data)
                 except json.JSONDecodeError as exc:
-                    raise ToolError(f"模型 API 返回了无效 SSE JSON: {data[:500]}") from exc
+                    raise ToolError(tr("model_api_invalid_sse", data=data[:500])) from exc
                 if isinstance(chunk, dict):
                     if chunk.get("error"):
-                        raise ToolError(f"模型 API 返回错误: {str(chunk['error'])[:2000]}")
+                        raise ToolError(
+                            tr("model_api_returned_error", error=str(chunk["error"])[:2000])
+                        )
                     yield chunk
         except requests.RequestException as exc:
             detail = ""
             if exc.response is not None:
                 detail = f": {exc.response.text[:2000]}"
-            raise ToolError(f"模型 API 流式请求失败 ({exc}){detail}") from exc
+            raise ToolError(
+                tr("model_api_stream_failed", error=exc, detail=detail)
+            ) from exc
         finally:
             if response is not None:
                 response.close()
@@ -531,18 +540,18 @@ class Agent:
     @staticmethod
     def _describe_tool_call(tool_call: dict[str, Any]) -> str:
         function = tool_call.get("function") or {}
-        name = function.get("name", "未知工具")
+        name = function.get("name", tr("unknown_tool"))
         try:
             arguments = json.loads(function.get("arguments") or "{}")
         except json.JSONDecodeError:
             arguments = {}
         labels = {
-            "list_directory": "查看目录",
-            "read_file": "读取文件",
-            "search_files": "搜索项目",
-            "write_file": "写入文件",
-            "replace_in_file": "修改文件",
-            "run_command": "执行命令",
+            "list_directory": tr("tool_list_directory"),
+            "read_file": tr("tool_read_file"),
+            "search_files": tr("tool_search_files"),
+            "write_file": tr("tool_write_file"),
+            "replace_in_file": tr("tool_replace_file"),
+            "run_command": tr("tool_run_command"),
         }
         detail = (
             arguments.get("path")
@@ -670,7 +679,9 @@ class Agent:
         target = self._resolve_path(path)
         if target.exists() and target not in self._read_paths:
             raise ToolError(f"修改已有文件前必须先读取它: {path}")
-        self._require_approval(f"写入文件 {target.relative_to(self.workspace)}")
+        self._require_approval(
+            tr("approval_write_file", path=target.relative_to(self.workspace))
+        )
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
@@ -690,7 +701,9 @@ class Agent:
         occurrences = content.count(old_content)
         if not old_content or occurrences != 1:
             raise ToolError(f"old_content 必须在文件中恰好出现一次，当前出现 {occurrences} 次")
-        self._require_approval(f"修改文件 {target.relative_to(self.workspace)}")
+        self._require_approval(
+            tr("approval_modify_file", path=target.relative_to(self.workspace))
+        )
         try:
             target.write_text(content.replace(old_content, new_content, 1), encoding="utf-8")
         except OSError as exc:
@@ -707,7 +720,7 @@ class Agent:
         if arguments[0] in {"rm", "sudo", "su", "shutdown", "reboot", "mkfs", "dd"}:
             raise ToolError(f"出于安全原因不允许执行命令: {arguments[0]}")
         if not self._is_low_risk_command(arguments):
-            self._require_approval(f"执行命令: {command}")
+            self._require_approval(tr("approval_run_command", command=command))
         try:
             completed = subprocess.run(
                 arguments,
@@ -811,20 +824,21 @@ class Agent:
         if self.auto_approve:
             return
         if not self.confirm(description):
-            raise ToolError(f"用户拒绝了操作: {description}")
+            raise ToolError(tr("operation_denied", description=description))
 
     def _terminal_confirm(self, description: str) -> bool:
         answer = input(
-            f"\n[权限请求] Neuro 想要{description}，是否允许？"
-            "(y/N/fc): "
+            "\n" + tr("agent_permission_prompt", description=description)
         ).strip().lower()
         if answer == "fc":
             self.auto_approve = True
             return True
-        return answer in {"y", "yes", "是"}
+        return answer in {"y", "yes", "是", "はい", "oui", "ja", "sim", "да"}
 
     @staticmethod
     def _truncate(text: str, limit: int = 20000) -> str:
         if len(text) <= limit:
             return text
-        return text[:limit] + f"\n... 输出过长，已截断 {len(text) - limit} 个字符"
+        return text[:limit] + "\n" + tr(
+            "output_truncated", count=len(text) - limit
+        )
