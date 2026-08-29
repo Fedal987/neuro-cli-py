@@ -12,7 +12,7 @@ except ModuleNotFoundError:
 from openai import OpenAI
 from pathlib import Path
 
-from . import prompt_builder
+from src.main.prompt import non_reasoning_prompt
 from src.main.ui.i18n import tr
 
 def _load_config():
@@ -30,7 +30,7 @@ API_KEY = _config["API_MANAGER"]["API_KEY"]
 MODEL = _config["API_MANAGER"]["MODEL"]
 STREAM = _config["API_MANAGER"]["STREAM"]
 TEMPERATURE = _config["API_MANAGER"]["TEMPREATURE"]
-SYSTEM_PROMPT = prompt_builder.prompt_building
+SYSTEM_PROMPT = non_reasoning_prompt.prompt_building
 
 _reasoning_config = _config.get("REASONING", {})
 REASONING_ENABLED = _reasoning_config.get("ENABLED", True)

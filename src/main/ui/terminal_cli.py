@@ -31,7 +31,7 @@ from src.main.api.api_manager import (
 from src.main.ui.i18n import LANGUAGE_NAMES, get_language, set_language, tr
 from src.main.msg.command_utils import CommandManager
 from src.main.msg.session_manager import SessionManager
-from src.main.tool.file_editor import editor, get_current_path, parse
+from src.main.tool.toolcall_utils import get_current_path
 
 for shift_enter_sequence in ("\x1b[27;2;13~", "\x1b[13;2u"):
     ANSI_SEQUENCES[shift_enter_sequence] = (Keys.Escape, Keys.ControlM)
@@ -146,9 +146,6 @@ class MarkdownStreamRenderer:
             self.live.stop()
             self.live = None
         return "".join(self.parts)
-
-def contains_json(text: str) -> bool:
-    return parse(text) is not None
 
 def build_bottom_toolbar() -> str:
     reasoning_effort = REASONING_EFFORT or tr("reasoning_default")
@@ -298,30 +295,12 @@ def main():
                         full_stream_reply += chunk
                     markdown_renderer.stop()
                 console.print()
-                if not msg_handler.reasoning_enabled and contains_json(full_stream_reply):
-                    feedback = editor(full_stream_reply)
-                    if not feedback.startswith("无法从您的回复中解析"):
-                        msg_handler.add_user_message(feedback)
-                        console.print("[bold magenta]Neuro[/bold magenta] >")
-                        final_reply = msg_handler.get_response()
-                        console.print(Markdown(final_reply))
-                        console.print()
             else:
                 with console.status(f"[bold blue]{tr('waiting')}[/bold blue]"):
                     reply = msg_handler.get_response(user_input)
                 console.print("\n[bold magenta]Neuro[/bold magenta] >")
                 console.print(Markdown(reply))
                 console.print()
-                if not msg_handler.reasoning_enabled and contains_json(reply):
-                    feedback = editor(reply)
-                    if not feedback.startswith("无法从您的回复中解析"):
-                        msg_handler.add_user_message(feedback)
-                        console.print("[bold magenta]Neuro[/bold magenta] >")
-                        with console.status(f"[bold blue]{tr('processing')}[/bold blue]"):
-                            final_reply = msg_handler.get_response()
-                        console.print(Markdown(final_reply))
-                        console.print()
-
         except KeyboardInterrupt:
             if markdown_renderer is not None:
                 markdown_renderer.stop()

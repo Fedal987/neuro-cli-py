@@ -62,6 +62,6 @@ uv run neuro.py
 
 ## 推理 Agent
 
-项目默认启用 `src/main/tool/reasoning.py` 提供的推理 Agent。它可以在当前工作目录内查看目录、读取和搜索文件，并通过工具调用完成修改与验证。
+项目默认使用 `src/main/prompt/reasoning_prompt.py` 中的推理提示词。推理和非推理提示词均通过 `src/main/tool/toolcall_utils.py` 创建共享的工具调用 Agent；它可以在当前工作目录内查看目录、读取和搜索文件，并通过工具调用完成修改与验证。关闭 `REASONING.ENABLED` 只会切换到非推理提示词并关闭思考参数，不会禁用工具调用。
 
 相关选项位于 `config.toml` 的 `[REASONING]` 配置段，完整示例见 `templates/config.toml.bak`。默认情况下，写入文件或运行命令前会请求用户确认。权限提示中输入 `fc`（full control）会允许当前操作，并在本次运行的后续操作中不再询问；该选择不会写入配置。只有在可信环境中才应启用持久生效的 `AUTO_APPROVE`。
