@@ -1,8 +1,8 @@
 """
-    Neuro-cli
+    NeuroCode
     author@Fedal987
     Powered by HeronStudio
-    GitHub: https://github.com/Fedal987/neuro-cli-py
+    GitHub: https://github.com/Fedal987/neurocode-py
 """
 
 

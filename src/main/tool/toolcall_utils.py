@@ -11,11 +11,14 @@ import json
 import os
 import shlex
 import subprocess
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event, Lock
 from typing import Any, Callable
 
 import requests
+from src.main.api.usage_tracker import UsageTracker
 from src.main.ui.i18n import tr
 
 BASE_URL = ""
@@ -29,6 +32,10 @@ def get_current_path() -> str:
 
 
 class ToolError(Exception):
+    pass
+
+
+class ConversationInterrupted(Exception):
     pass
 
 
@@ -53,6 +60,7 @@ class Agent:
         temperature: float = 0.2,
         command_timeout: int = 60,
         confirm: Callable[[str], bool] | None = None,
+        usage_tracker: UsageTracker | None = None,
     ):
         self.api_key = api_key
         self.workspace = Path(workspace).expanduser().resolve()
@@ -66,8 +74,16 @@ class Agent:
         self.temperature = temperature
         self.command_timeout = max(1, int(command_timeout))
         self.confirm = confirm or self._terminal_confirm
+        self.usage_tracker = usage_tracker
         self._read_paths: set[Path] = set()
         self._last_failed_call: str | None = None
+        self._cancel_event = Event()
+        self._response_lock = Lock()
+        self._active_response: requests.Response | None = None
+        self._interaction_paused: Callable[[], None] | None = None
+        self._interaction_resumed: Callable[[], None] | None = None
+        self._pending_user_messages: deque[str] = deque()
+        self._pending_messages_lock = Lock()
 
         if not self.workspace.is_dir():
             raise ValueError(tr("workspace_invalid", path=self.workspace))
@@ -193,7 +209,24 @@ class Agent:
     def add_user_message(self, text: str) -> None:
         self.messages.append({"role": "user", "content": text})
 
+    def queue_user_message(self, text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        with self._pending_messages_lock:
+            self._pending_user_messages.append(text)
+
+    def _append_pending_user_messages(self) -> tuple[str, ...]:
+        with self._pending_messages_lock:
+            pending = tuple(self._pending_user_messages)
+            self._pending_user_messages.clear()
+        for text in pending:
+            self.add_user_message(text)
+        return pending
+
     def run(self, user_input: str | None = None) -> str:
+        self._cancel_event.clear()
+        self._append_pending_user_messages()
         if user_input:
             self.add_user_message(user_input)
         if not any(message["role"] == "user" for message in self.messages):
@@ -201,9 +234,13 @@ class Agent:
 
         self._read_paths.clear()
         self._last_failed_call = None
+        completed_answers: list[str] = []
         for _ in range(self.max_steps):
             try:
                 message = self._request_completion()
+            except ConversationInterrupted:
+                self._append_pending_user_messages()
+                return tr("conversation_interrupted")
             except ToolError as exc:
                 return self._record_error(tr("agent_api_error", error=exc))
             assistant_message = {
@@ -217,18 +254,27 @@ class Agent:
                 assistant_message["tool_calls"] = tool_calls
             self.messages.append(assistant_message)
 
-            if not tool_calls:
-                return assistant_message["content"]
+            if tool_calls:
+                for tool_call in tool_calls:
+                    if self._cancel_event.is_set():
+                        return tr("conversation_interrupted")
+                    result = self._execute_tool_call(tool_call)
+                    self.messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.get("id", "unknown"),
+                            "content": result,
+                        }
+                    )
 
-            for tool_call in tool_calls:
-                result = self._execute_tool_call(tool_call)
-                self.messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.get("id", "unknown"),
-                        "content": result,
-                    }
-                )
+            pending = self._append_pending_user_messages()
+            if pending:
+                if not tool_calls and assistant_message["content"]:
+                    completed_answers.append(assistant_message["content"])
+                continue
+            if not tool_calls:
+                completed_answers.append(assistant_message["content"])
+                return "\n\n".join(filter(None, completed_answers))
 
         limit_message = (
             f"已达到最大执行步数 {self.max_steps}。请总结已完成的工作、验证结果和仍未解决的问题，"
@@ -237,6 +283,9 @@ class Agent:
         self.messages.append({"role": "user", "content": limit_message})
         try:
             message = self._request_completion(use_tools=False)
+        except ConversationInterrupted:
+            self._append_pending_user_messages()
+            return tr("conversation_interrupted")
         except ToolError as exc:
             return self._record_error(tr("agent_api_error", error=exc))
         content = message.get("content") or limit_message
@@ -245,10 +294,14 @@ class Agent:
 
     def run_stream(self, user_input: str | None = None):
         for event in self.run_stream_events(user_input):
-            if event.kind in {"content", "error"}:
+            if event.kind in {"content", "error", "interrupted"}:
                 yield event.content
+            elif event.kind == "queued_user":
+                yield f"\n\n**{tr('user_prompt').strip()}** {event.content}\n\n"
 
     def run_stream_events(self, user_input: str | None = None):
+        self._cancel_event.clear()
+        self._append_pending_user_messages()
         if user_input:
             self.add_user_message(user_input)
         if not any(message["role"] == "user" for message in self.messages):
@@ -277,6 +330,12 @@ class Agent:
                         content_parts.append(content)
                         yield StreamEvent("content", content)
                     self._merge_tool_call_deltas(tool_call_parts, delta.get("tool_calls") or [])
+            except ConversationInterrupted:
+                pending = self._append_pending_user_messages()
+                for text in pending:
+                    yield StreamEvent("queued_user", text)
+                yield StreamEvent("interrupted", tr("conversation_interrupted"))
+                return
             except ToolError as exc:
                 yield StreamEvent(
                     "error", self._record_error(tr("agent_api_error", error=exc))
@@ -301,23 +360,32 @@ class Agent:
                 assistant_message["tool_calls"] = tool_calls
             self.messages.append(assistant_message)
 
+            if tool_calls:
+                for tool_call in tool_calls:
+                    if self._cancel_event.is_set():
+                        yield StreamEvent("interrupted", tr("conversation_interrupted"))
+                        return
+                    description = self._describe_tool_call(tool_call)
+                    yield StreamEvent("tool", description)
+                    result = self._execute_tool_call(tool_call)
+                    self.messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.get("id", "unknown"),
+                            "content": result,
+                        }
+                    )
+                    failed = "执行失败" in result or "已阻止" in result
+                    status = tr("tool_failed") if failed else tr("tool_completed")
+                    yield StreamEvent("tool_result", f"{status}: {description}")
+
+            pending = self._append_pending_user_messages()
+            for text in pending:
+                yield StreamEvent("queued_user", text)
+            if pending:
+                continue
             if not tool_calls:
                 return
-
-            for tool_call in tool_calls:
-                description = self._describe_tool_call(tool_call)
-                yield StreamEvent("tool", description)
-                result = self._execute_tool_call(tool_call)
-                self.messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.get("id", "unknown"),
-                        "content": result,
-                    }
-                )
-                failed = "执行失败" in result or "已阻止" in result
-                status = tr("tool_failed") if failed else tr("tool_completed")
-                yield StreamEvent("tool_result", f"{status}: {description}")
 
         limit_message = (
             f"已达到最大执行步数 {self.max_steps}。请总结已完成的工作、验证结果和仍未解决的问题，"
@@ -334,6 +402,12 @@ class Agent:
                 if content:
                     content_parts.append(content)
                     yield StreamEvent("content", content)
+        except ConversationInterrupted:
+            pending = self._append_pending_user_messages()
+            for text in pending:
+                yield StreamEvent("queued_user", text)
+            yield StreamEvent("interrupted", tr("conversation_interrupted"))
+            return
         except ToolError as exc:
             yield StreamEvent(
                 "error", self._record_error(tr("agent_api_error", error=exc))
@@ -343,27 +417,45 @@ class Agent:
         self.messages.append({"role": "assistant", "content": content})
 
     def _request_completion(self, use_tools: bool = True) -> dict[str, Any]:
+        if self._cancel_event.is_set():
+            raise ConversationInterrupted
         payload = self._build_payload(use_tools=use_tools, stream=False)
 
         endpoint = self._completion_endpoint()
+        response = None
         try:
-            response = self.session.post(endpoint, json=payload, timeout=120)
+            response = self.session.post(
+                endpoint, json=payload, stream=True, timeout=120
+            )
+            self._set_active_response(response)
             response.raise_for_status()
             data = response.json()
         except requests.RequestException as exc:
+            if self._cancel_event.is_set():
+                raise ConversationInterrupted from exc
             detail = ""
             if exc.response is not None:
                 detail = f": {exc.response.text[:2000]}"
             raise ToolError(tr("model_api_request_failed", error=exc, detail=detail)) from exc
         except ValueError as exc:
             raise ToolError(tr("model_api_invalid_json")) from exc
+        finally:
+            self._clear_active_response(response)
+            if response is not None:
+                response.close()
 
+        if self._cancel_event.is_set():
+            raise ConversationInterrupted
+
+        self._record_usage(data.get("usage"))
         choices = data.get("choices") or []
         if not choices or not isinstance(choices[0].get("message"), dict):
             raise ToolError(tr("model_api_missing_message", data=str(data)[:2000]))
         return choices[0]["message"]
 
     def _request_completion_stream(self, use_tools: bool = True):
+        if self._cancel_event.is_set():
+            raise ConversationInterrupted
         payload = self._build_payload(use_tools=use_tools, stream=True)
         response = None
         try:
@@ -373,8 +465,11 @@ class Agent:
                 stream=True,
                 timeout=120,
             )
+            self._set_active_response(response)
             response.raise_for_status()
             for raw_line in response.iter_lines(chunk_size=1, decode_unicode=True):
+                if self._cancel_event.is_set():
+                    raise ConversationInterrupted
                 if not raw_line:
                     continue
                 line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
@@ -392,8 +487,13 @@ class Agent:
                         raise ToolError(
                             tr("model_api_returned_error", error=str(chunk["error"])[:2000])
                         )
+                    self._record_usage(chunk.get("usage"))
                     yield chunk
+            if self._cancel_event.is_set():
+                raise ConversationInterrupted
         except requests.RequestException as exc:
+            if self._cancel_event.is_set():
+                raise ConversationInterrupted from exc
             detail = ""
             if exc.response is not None:
                 detail = f": {exc.response.text[:2000]}"
@@ -401,6 +501,7 @@ class Agent:
                 tr("model_api_stream_failed", error=exc, detail=detail)
             ) from exc
         finally:
+            self._clear_active_response(response)
             if response is not None:
                 response.close()
 
@@ -411,6 +512,8 @@ class Agent:
             "stream": stream,
             "temperature": self.temperature,
         }
+        if stream:
+            payload["stream_options"] = {"include_usage": True}
         if use_tools:
             payload["tools"] = self.tools
             payload["tool_choice"] = "auto"
@@ -421,6 +524,34 @@ class Agent:
         elif "siliconflow" in self.base_url:
             payload["enable_thinking"] = self.thinking
         return payload
+
+    def _record_usage(self, usage: Any) -> None:
+        if self.usage_tracker is not None and isinstance(usage, dict):
+            self.usage_tracker.record(usage)
+
+    def interrupt(self) -> None:
+        self._cancel_event.set()
+        with self._response_lock:
+            response = self._active_response
+        if response is not None:
+            response.close()
+
+    def set_interaction_callbacks(
+        self,
+        paused: Callable[[], None] | None,
+        resumed: Callable[[], None] | None,
+    ) -> None:
+        self._interaction_paused = paused
+        self._interaction_resumed = resumed
+
+    def _set_active_response(self, response: requests.Response) -> None:
+        with self._response_lock:
+            self._active_response = response
+
+    def _clear_active_response(self, response: requests.Response | None) -> None:
+        with self._response_lock:
+            if self._active_response is response:
+                self._active_response = None
 
     def _completion_endpoint(self) -> str:
         if self.base_url.endswith("/chat/completions"):
@@ -766,9 +897,15 @@ class Agent:
             raise ToolError(tr("operation_denied", description=description))
 
     def _terminal_confirm(self, description: str) -> bool:
-        answer = input(
-            "\n" + tr("agent_permission_prompt", description=description)
-        ).strip().lower()
+        if self._interaction_paused is not None:
+            self._interaction_paused()
+        try:
+            answer = input(
+                "\n" + tr("agent_permission_prompt", description=description)
+            ).strip().lower()
+        finally:
+            if self._interaction_resumed is not None:
+                self._interaction_resumed()
         if answer == "fc":
             self.auto_approve = True
             return True

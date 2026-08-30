@@ -18,6 +18,7 @@ class CommandManager:
         language_setter: Callable[[str], str] | None = None,
         language_names: dict[str, str] | None = None,
         language_changed_callback: Callable[[], None] | None = None,
+        exit_message_getter: Callable[[], str] | None = None,
     ) -> None:
         self.console = console
         self.session_manager = session_manager
@@ -26,6 +27,7 @@ class CommandManager:
         self.language_setter = language_setter
         self.language_names = language_names or {"en": "English"}
         self.language_changed_callback = language_changed_callback
+        self.exit_message_getter = exit_message_getter or (lambda: self.tr("goodbye"))
         self._commands: dict[str, Callable[[str], bool]] = {
             "/help": self._show_help,
             "/lang": self._language,
@@ -110,7 +112,7 @@ class CommandManager:
         return False
 
     def _exit(self, _argument: str) -> bool:
-        self.console.print(f"[bold yellow]{self.tr('goodbye')}[/bold yellow]")
+        self.console.print(f"[bold yellow]{self.exit_message_getter()}[/bold yellow]")
         return True
 
     def _clear(self, _argument: str) -> bool:

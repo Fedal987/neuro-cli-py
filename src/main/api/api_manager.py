@@ -13,6 +13,7 @@ from openai import OpenAI
 from pathlib import Path
 
 from src.main.prompt import non_reasoning_prompt
+from src.main.api.usage_tracker import UsageTracker
 from src.main.ui.i18n import tr
 
 def _load_config():
@@ -40,6 +41,8 @@ REASONING_EFFORT = _reasoning_config.get("EFFORT", "")
 REASONING_AUTO_APPROVE = _reasoning_config.get("AUTO_APPROVE", False)
 REASONING_COMMAND_TIMEOUT = _reasoning_config.get("COMMAND_TIMEOUT", 60)
 
+USAGE_TRACKER = UsageTracker()
+
 _client = OpenAI(
     base_url=BASE_URL,
     api_key=API_KEY,
@@ -57,10 +60,14 @@ def get_completion(messages, stream=False, temperature=None):
         if use_stream:
             def generator():
                 for chunk in response:
+                    if chunk.usage is not None:
+                        USAGE_TRACKER.record(chunk.usage.model_dump())
                     if chunk.choices and chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
             return generator()
         else:
+            if response.usage is not None:
+                USAGE_TRACKER.record(response.usage.model_dump())
             return response.choices[0].message.content
     except Exception as e:
         if use_stream:
@@ -79,6 +86,8 @@ def get_completion_stream(messages, temperature=None):
             temperature=temperature if temperature is not None else TEMPERATURE,
         )
         for chunk in response:
+            if chunk.usage is not None:
+                USAGE_TRACKER.record(chunk.usage.model_dump())
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
     except Exception as e:

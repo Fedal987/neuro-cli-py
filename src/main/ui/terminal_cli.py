@@ -13,13 +13,9 @@ from prompt_toolkit.keys import Keys
 from prompt_toolkit.lexers import PygmentsLexer
 from pygments.lexers import PythonLexer
 from rich.console import Console
-from rich.live import Live
-from rich.markdown import Markdown
 from rich.panel import Panel
-from itertools import chain
 import os
 import sys
-import time
 from typing import TextIO
 
 from src.main.api.api_manager import (
@@ -27,8 +23,10 @@ from src.main.api.api_manager import (
     MODEL,
     REASONING_EFFORT,
     REASONING_ENABLED,
+    USAGE_TRACKER,
 )
 from src.main.ui.i18n import LANGUAGE_NAMES, get_language, set_language, tr
+from src.main.ui.conversation_input import ConversationInput
 from src.main.msg.command_utils import CommandManager
 from src.main.msg.session_manager import SessionManager
 from src.main.tool.toolcall_utils import get_current_path
@@ -104,49 +102,6 @@ LOGO = r"""
 ╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝      ╚═════╝╚══════╝╚═╝
 """
 
-class MarkdownStreamRenderer:
-    def __init__(self, target_console: Console, refresh_interval: float = 0.08):
-        self.console = target_console
-        self.parts: list[str] = []
-        self.live: Live | None = None
-        self.refresh_interval = refresh_interval
-        self.last_rendered_at = 0.0
-        self.dirty = False
-
-    def update(self, chunk: str) -> None:
-        self.parts.append(chunk)
-        self.dirty = True
-        now = time.monotonic()
-        if self.live is None:
-            self._render(now, start=True)
-        elif now - self.last_rendered_at >= self.refresh_interval:
-            self._render(now)
-
-    def _render(self, now: float, start: bool = False, refresh: bool = False) -> None:
-        renderable = Markdown("".join(self.parts))
-        if start:
-            self.live = Live(
-                renderable,
-                console=self.console,
-                refresh_per_second=12,
-                transient=False,
-                redirect_stdout=False,
-                redirect_stderr=False,
-            )
-            self.live.start()
-        elif self.live is not None:
-            self.live.update(renderable, refresh=refresh)
-        self.last_rendered_at = now
-        self.dirty = False
-
-    def stop(self) -> str:
-        if self.live is not None:
-            if self.dirty:
-                self._render(time.monotonic(), refresh=True)
-            self.live.stop()
-            self.live = None
-        return "".join(self.parts)
-
 def build_bottom_toolbar() -> str:
     reasoning_effort = REASONING_EFFORT or tr("reasoning_default")
     if not REASONING_ENABLED:
@@ -170,6 +125,16 @@ def render_welcome() -> None:
     console.print()
 
 
+def build_exit_message() -> str:
+    usage = USAGE_TRACKER.snapshot()
+    return tr(
+        "exit_summary",
+        total_tokens=f"{usage.total_tokens:,}",
+        cached_tokens=f"{usage.cached_tokens:,}",
+        cache_hit_rate=f"{usage.cache_hit_rate:.2f}%",
+    )
+
+
 def main():
     render_welcome()
 
@@ -182,6 +147,7 @@ def main():
         language_setter=set_language,
         language_names=LANGUAGE_NAMES,
         language_changed_callback=render_welcome,
+        exit_message_getter=build_exit_message,
     )
     session = PromptSession(
         history=session_manager.prompt_history,
@@ -191,7 +157,7 @@ def main():
         multiline=True,
     )
     while True:
-        markdown_renderer = None
+        conversation_input = None
         try:
             keyboard_protocol = enable_enhanced_keyboard_protocol()
             try:
@@ -211,107 +177,105 @@ def main():
             session_manager.ensure_current_session()
             session_manager.activate_current_session()
             msg_handler = session_manager.current_handler
+            conversation_input = ConversationInput(
+                lambda: tr("user_prompt"),
+                msg_handler.queue_user_message,
+                lambda: conversation_input.append_output(
+                    f"\n{tr('escape_interrupt_hint')}\n",
+                    "class:interrupt",
+                ),
+                msg_handler.interrupt,
+                bottom_toolbar=build_bottom_toolbar,
+            )
+            msg_handler.set_interaction_callbacks(
+                conversation_input.stop,
+                conversation_input.start,
+            )
+            conversation_input.start()
             if msg_handler.use_stream:
-                full_stream_reply = ""
                 if msg_handler.reasoning_enabled:
                     displayed_kind = None
-                    markdown_renderer = MarkdownStreamRenderer(console)
-                    events = iter(msg_handler.get_response_events(user_input))
-                    with console.status(f"[bold blue]{tr('waiting')}[/bold blue]"):
-                        first_event = next(events, None)
-                    event_stream = chain((first_event,), events) if first_event is not None else ()
-                    for event in event_stream:
+                    for event in msg_handler.get_response_events(user_input):
                         if event.kind == "reasoning":
                             if displayed_kind != "reasoning":
-                                if displayed_kind == "content":
-                                    markdown_renderer.stop()
-                                    markdown_renderer = MarkdownStreamRenderer(console)
-                                if displayed_kind is not None:
-                                    console.print()
-                                leading_newline = "\n" if displayed_kind is None else ""
-                                console.print(
-                                    f"{leading_newline}[dim italic cyan]{tr('thinking')}[/dim italic cyan]\n > ",
-                                    end="",
+                                conversation_input.append_output(
+                                    f"\n{tr('thinking')}\n",
+                                    "class:reasoning-title",
                                 )
                                 displayed_kind = "reasoning"
-                            console.print(
+                            conversation_input.append_output(
                                 event.content,
-                                end="",
-                                style="dim italic cyan",
-                                markup=False,
+                                "class:reasoning",
                             )
                         elif event.kind == "content":
                             if displayed_kind != "content":
-                                if displayed_kind is not None:
-                                    console.print()
-                                leading_newline = "\n" if displayed_kind is None else ""
-                                console.print(
-                                    f"{leading_newline}[bold magenta]Neuro[/bold magenta] >"
+                                conversation_input.append_output(
+                                    "\nNeuro >\n",
+                                    "class:answer-title",
                                 )
                                 displayed_kind = "content"
-                            markdown_renderer.update(event.content)
-                            full_stream_reply += event.content
+                            conversation_input.append_markdown(event.content)
                         elif event.kind in {"tool", "tool_result"}:
-                            if displayed_kind == "content":
-                                markdown_renderer.stop()
-                                markdown_renderer = MarkdownStreamRenderer(console)
-                            if displayed_kind is not None:
-                                console.print()
                             label = tr("tool_call") if event.kind == "tool" else tr("tool_result")
-                            style = "dim yellow" if event.kind == "tool" else "dim green"
-                            console.print(f"[{style}]{label}[/] > ", end="")
-                            console.print(event.content, style=style, markup=False)
-                            displayed_kind = event.kind
-                        else:
-                            if displayed_kind == "content":
-                                markdown_renderer.stop()
-                                markdown_renderer = MarkdownStreamRenderer(console)
-                            if displayed_kind is not None:
-                                console.print()
-                            leading_newline = "\n" if displayed_kind is None else ""
-                            console.print(
-                                f"{leading_newline}[bold red]{tr('error')}: [/bold red] > ",
-                                end="",
+                            conversation_input.append_output(
+                                f"\n{label} > {event.content}\n",
+                                "class:tool" if event.kind == "tool" else "class:tool-result",
                             )
-                            console.print(
-                                event.content,
-                                style="bold red",
-                                markup=False,
+                            displayed_kind = event.kind
+                        elif event.kind == "interrupted":
+                            conversation_input.append_output(
+                                f"\n{event.content}\n",
+                                "class:interrupt",
+                            )
+                            displayed_kind = "interrupted"
+                        elif event.kind == "queued_user":
+                            conversation_input.append_output(
+                                f"\n{tr('user_prompt')}{event.content}\n",
+                                "class:user",
+                            )
+                            displayed_kind = "queued_user"
+                        else:
+                            conversation_input.append_output(
+                                f"\n{tr('error')} > {event.content}\n",
+                                "class:error",
                             )
                             displayed_kind = "error"
-                            full_stream_reply += event.content
-                    markdown_renderer.stop()
                     if displayed_kind is None:
-                        console.print("\n[bold magenta]Neuro[/bold magenta] > ", end="")
+                        conversation_input.append_output(
+                            "\nNeuro >\n",
+                            "class:answer-title",
+                        )
                 else:
-                    console.print("\n[bold magenta]Neuro[/bold magenta] >")
-                    markdown_renderer = MarkdownStreamRenderer(console)
-                    chunks = iter(msg_handler.get_response_stream(user_input))
-                    with console.status(f"[bold blue]{tr('waiting')}[/bold blue]"):
-                        first_chunk = next(chunks, None)
-                    chunk_stream = chain((first_chunk,), chunks) if first_chunk is not None else ()
-                    for chunk in chunk_stream:
-                        markdown_renderer.update(chunk)
-                        full_stream_reply += chunk
-                    markdown_renderer.stop()
-                console.print()
+                    conversation_input.append_output(
+                        "\nNeuro >\n",
+                        "class:answer-title",
+                    )
+                    for chunk in msg_handler.get_response_stream(user_input):
+                        conversation_input.append_markdown(chunk)
+                conversation_input.append_output("\n")
             else:
-                with console.status(f"[bold blue]{tr('waiting')}[/bold blue]"):
-                    reply = msg_handler.get_response(user_input)
-                console.print("\n[bold magenta]Neuro[/bold magenta] >")
-                console.print(Markdown(reply))
-                console.print()
+                reply = msg_handler.get_response(user_input)
+                conversation_input.append_output(
+                    "\nNeuro >\n",
+                    "class:answer-title",
+                )
+                conversation_input.append_markdown(reply)
+                conversation_input.append_output("\n")
         except KeyboardInterrupt:
-            if markdown_renderer is not None:
-                markdown_renderer.stop()
-            console.print(f"\n[dim]{tr('interrupt_hint')}[/dim]")
-            continue
+            if conversation_input is not None:
+                conversation_input.append_output(f"\n{build_exit_message()}\n")
+            else:
+                console.print(f"\n[bold yellow]{build_exit_message()}[/bold yellow]")
+            break
         except EOFError:
-            if markdown_renderer is not None:
-                markdown_renderer.stop()
-            console.print(f"\n[bold yellow]{tr('goodbye')}[/bold yellow]")
+            console.print(f"\n[bold yellow]{build_exit_message()}[/bold yellow]")
             break
         finally:
+            if conversation_input is not None:
+                conversation_input.stop()
+                msg_handler.set_interaction_callbacks(None, None)
+                if conversation_input.transcript:
+                    conversation_input.render_transcript(console)
             try:
                 session_manager.save_current_session()
             except (OSError, TypeError, ValueError) as exc:

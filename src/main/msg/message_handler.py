@@ -20,6 +20,7 @@ from src.main.api.api_manager import (
     STREAM,
     SYSTEM_PROMPT,
     TEMPERATURE,
+    USAGE_TRACKER,
 )
 from src.main.prompt.non_reasoning_prompt import create_agent as create_non_reasoning_agent
 from src.main.prompt.reasoning_prompt import create_agent as create_reasoning_agent
@@ -44,6 +45,7 @@ class MessageHandler:
             max_steps=REASONING_MAX_STEPS,
             temperature=TEMPERATURE,
             command_timeout=REASONING_COMMAND_TIMEOUT,
+            usage_tracker=USAGE_TRACKER,
         )
         if self.reasoning_enabled:
             self.agent = agent_factory(**agent_options)
@@ -79,6 +81,15 @@ class MessageHandler:
 
     def set_stream_mode(self, enabled: bool):
         self.use_stream = enabled
+
+    def interrupt(self) -> None:
+        self.agent.interrupt()
+
+    def queue_user_message(self, text: str) -> None:
+        self.agent.queue_user_message(text)
+
+    def set_interaction_callbacks(self, paused, resumed) -> None:
+        self.agent.set_interaction_callbacks(paused, resumed)
 
     def get_last_user_message(self) -> str | None:
         for msg in reversed(self.history):
